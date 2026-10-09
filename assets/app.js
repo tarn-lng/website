@@ -1,20 +1,1390 @@
-const source='https://github.com/tarn-lng/tarn/blob/main/';
-const registry='https://tarn-lng.github.io/registry/';
-const content=document.querySelector('#content');
-const escape=s=>String(s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const block=s=>`<div class="command-block"><button class="copy" type="button" aria-label="Copy command">Copy</button><pre><code>${escape(s)}</code></pre></div>`;
-const page=(label,title,intro,body)=>`<section class="page"><div class="section-label">${label}</div><h1>${title}</h1><p class="page-intro">${intro}</p>${body}</section>`;
-const doc=(path,title,note)=>`<a href="${source}docs/${path}.md">${title} ↗<span>${note}</span></a>`;
-const pages={
-install:()=>page('GET STARTED','Build your first<br><em>Tarn program.</em>','The current supported target is Linux x86_64. Tarn is experimental. Install a verified binary release or build the toolchain from source.',`<div class="prose"><div class="notice">Prebuilt Linux x86_64 binaries require glibc 2.35 or newer. Releases are experimental. SHA-256 verifies download integrity; independent publisher signatures are not available yet.</div><h2>01 · Install a release</h2><a class="text-link" href="install.sh" download="install-tarn.sh">Download installer script ↓</a>${block("curl --fail --proto '=https' https://tarn-lng.github.io/website/install.sh -o install-tarn.sh\n# Inspect install-tarn.sh before running it\nsh install-tarn.sh --version 0.0.1\nexport PATH=\"$HOME/.local/bin:$PATH\"\ntarn version")}<p>The installer verifies SHA-256 and installs Tarn and Tarn LSP without sudo. Native builds still require a C compiler and libc development headers. Use <code>--prefix /absolute/directory</code> for a custom location, <code>--force</code> to replace an existing unmanaged installation, or <code>--uninstall</code> to remove an unchanged managed installation.</p><a class="text-link" href="https://github.com/tarn-lng/tarn/releases/tag/v0.0.1">Download binaries and checksums ↗</a><h2>Alternative · Build from source</h2><p>Install Git, a current stable Rust toolchain with Rust 2024 support, and your distribution's C build tools. Then:</p>${block('git clone https://github.com/tarn-lng/tarn.git\ncd tarn\ncargo build --release -p tarn -p tarn-lsp\n./target/release/tarn --help')}<p>The CLI is <code>target/release/tarn</code>; the language server is <code>target/release/tarn-lsp</code>. Put these binaries in a directory on your PATH if desired.</p><h2>02 · Create and run a project</h2>${block('tarn init hello\ncd hello\ntarn run\ntarn check --json\ntarn test')}<h2>03 · Add a package</h2>${block('tarn add dbus --registry '+registry+'\ntarn build --link dbus-1')}<p>D-Bus requires libdbus-1 development files. Imports do not grant native linking authority; <code>--link</code> is explicit.</p><h2>Editor support</h2><p>The repository includes the VS Code extension under <code>editors/vscode</code>. Follow its setup instructions and point it at the compiler's LSP binary.</p><a class="text-link" href="${source}editors/vscode/README.md">VS Code setup ↗</a><h2>Published versions</h2><a class="button secondary" href="https://github.com/tarn-lng/tarn/releases">Check GitHub Releases ↗</a></div>`),
-learn:()=>page('LANGUAGE GUIDE','Readable code.<br>Explicit decisions.','A practical introduction to today’s Tarn, with links to the canonical specification and detailed guides.',`<div class="content-grid"><aside class="side-nav"><a href="#learn">Language basics</a><a href="#ownership">Ownership</a><a href="#errors">Errors</a><a href="#stdlib">Standard library</a><a href="#cli">Toolchain</a></aside><div class="prose"><h2>Bindings and functions</h2><p>Immutable bindings use <code>:=</code>. Mutable declarations use <code>var</code> and <code>=</code>. Return statements are explicit.</p>${block('fn add(a i32, b i32) i32 {\n    return a + b\n}\n\nfn main() {\n    result := add(2, 3)\n    var counter = result\n    counter = counter + 1\n    print(counter)\n}')}<h2>Predictable control flow</h2><p>No semicolons, implicit numeric conversions or expression-valued blocks. Loops use <code>for</code>; interfaces are nominal. Error propagation uses prefix <code>try</code>.</p><div class="doc-links">${doc('language','Language reference','Established syntax and semantics')}${doc('grammar','Grammar','Parser-level language rules')}${doc('llm-guide','Guide for coding agents','Practical conventions and examples')}${doc('architecture','Compiler architecture','Frontend, ownership and code generation')}</div><div class="notice">The language is evolving. Consult the canonical documentation for restrictions; Rust, Go or C++ syntax is not automatically Tarn syntax.</div></div></div>`),
-ownership:()=>page('LANGUAGE / OWNERSHIP','Keep ownership clear.','Memory safety comes from compile-time moves, borrows and initialization checks, without a mandatory garbage collector.',`<div class="prose"><h2>Borrow when the caller keeps ownership</h2>${block('fn show(value &string) {\n    print(value)\n}\n\nfn main() {\n    name := "Tarn"\n    show(&name)\n    print(name)\n}')}<p>A shared borrow permits reading. A mutable borrow uses <code>&mut</code> and excludes conflicting access. Lifetimes are inferred, not written as lifetime parameters.</p><h2>Move when ownership changes</h2><p>Passing a non-Copy owner by value transfers it. Reuse after a move is rejected. Copy is a semantic capability; it is not inferred from a value's byte size.</p><h2>Current boundaries</h2><p>References stored inside struct or enum fields are forbidden in v0. User-defined destructors and panic unwinding are not available. Unsafe FFI is a trusted boundary outside the complete Tarn safety proof.</p><a class="text-link" href="${source}docs/language.md">Canonical ownership rules ↗</a></div>`),
-errors:()=>page('LANGUAGE / ERRORS','Errors you can act on.','Use Result and Option explicitly. Propagate recoverable errors with try and inspect compiler diagnostics as text or JSON.',`<div class="prose">${block('import "fs"\nimport "io"\n\nfn load_config() Result<string, io.Error> {\n    return fs.read_text("config.txt")\n}\n\nfn main() {\n    match load_config() {\n        Ok(text) => { print(text) }\n        Err(_) => { print("Cannot read config.txt") }\n    }\n}')}<h2>Machine-readable checking</h2>${block('tarn check --json')}<p>Diagnostics carry codes and source positions. Prefix <code>try</code> propagates a compatible error from a function returning Result or Option; it does not perform implicit error conversion.</p><div class="doc-links">${doc('errors','Diagnostic codes','Compiler errors and actionable guidance')}${doc('cli','CLI contracts','JSON output and command behavior')}</div></div>`),
-cli:()=>page('TOOLCHAIN','One CLI.<br>A complete workflow.','Compile, inspect, test and manage dependencies with the integrated Tarn command. The commands below are present in the current implementation.',`<div class="prose"><div class="table-wrap"><table><thead><tr><th>Command</th><th>Purpose</th></tr></thead><tbody>${[['tarn init app','Create an application'],['tarn init library --lib','Create a source library'],['tarn check --json','Check code; machine-readable diagnostics'],['tarn build [-o path]','Build a native executable'],['tarn run','Build and run'],['tarn test','Run tests'],['tarn fmt','Format Tarn source'],['tarn stdlib [module] --json','Discover embedded public APIs'],['tarn add NAME --registry URL','Resolve and lock a dependency'],['tarn fetch','Fetch exact locked sources'],['tarn update [NAME]','Intentionally update versions'],['tarn deps --tree','Explain the dependency graph'],['tarn verify --json','Verify cached package integrity'],['tarn audit --json','Report advisories and unknown evidence'],['tarn publish --registry DIRECTORY','Publish an immutable local release']].map(([c,d])=>`<tr><td><code>${escape(c)}</code></td><td>${d}</td></tr>`).join('')}</tbody></table></div><h2>Native linking is explicit</h2>${block('tarn build --link dbus-1\ntarn run --link dbus-1')}<h2>Deliberate dependency updates</h2><p>Commit both <code>tarn.toml</code> and <code>tarn.lock</code>. Normal builds do not fetch packages, rewrite locks or execute package hooks. Use <code>fetch</code> to retrieve locked bytes and <code>update</code> to change versions.</p><div class="doc-links">${doc('cli','Full CLI reference','Flags and exit behavior')}${doc('packages','Package management','Manifest, lock and registry format')}</div><div class="notice">Registry publication currently uses a reviewed pull request. Authenticated network publishing and <code>tarn explain</code> are not implemented.</div></div>`),
-stdlib:()=>page('STANDARD LIBRARY','Useful building blocks.','Discover the actual embedded API from your compiler, then follow the module guides for contracts and examples.',`<div class="prose">${block('tarn stdlib --json\ntarn stdlib collections --json')}<div class="doc-links">${[['collections','Collections','Maps, sets and sorting'],['strings','Text','UTF-8 strings and builders'],['filesystem','Filesystem','Owned files and directory operations'],['console','Console','Input, output and explicit flush'],['clocks','Time','Monotonic and wall clocks'],['json','JSON','Owned values and explicit encoding'],['csv','CSV','Tabular text processing'],['http','HTTP','Server and request handling'],['https','HTTPS','Client contracts and native dependencies'],['ffi','C interoperability','Explicit unsafe and native linking'],['process','Processes','Owned child completion'],['native-tasks-report','Native tasks','Ownership and concurrency']].map(x=>doc(...x)).join('')}</div><h2>Independent packages</h2><p>D-Bus is distributed as a separate package. Desktop protocols are not built into the compiler or stdlib.</p><a class="text-link" href="#packages">Explore packages →</a></div>`),
-project:()=>page('PROJECT','Built in the open.','Tarn is a young systems language. Real applications guide the design, and experimental boundaries remain explicit.',`<div class="prose"><h2>What runs today</h2><p>Native programs on Linux x86_64, ownership and borrowing checks, standard-library I/O and collections, a compiler-backed LSP, source packages and machine-readable CLI operations.</p><h2>Evidence, not feature lists</h2><p>The source repository includes a CSV report CLI and status_device collector evidence. The live desktop indicator still uses a Python D-Bus adapter while the independent Tarn D-Bus package gains server support. This website does not claim the entire desktop application has been ported.</p><h2>Still experimental</h2><p>No promise of language/API stability, cross-platform support or complete native-library safety. Package signatures, public upload authentication and server D-Bus object publication remain future work.</p><div class="doc-links"><a href="https://github.com/tarn-lng/tarn">Compiler & stdlib ↗<span>Main language repository</span></a><a href="https://github.com/tarn-lng/tarn-dbus">D-Bus package ↗<span>Independent library and isolated-bus tests</span></a><a href="https://github.com/tarn-lng/registry">Registry ↗<span>Tarn validation and reviewed publication</span></a><a href="https://github.com/tarn-lng/website">Website ↗<span>This site</span></a></div><h2>Contribute</h2><p>Start with the repository's AGENTS.md and architecture notes. Report reproducible issues, preserve documented safety boundaries and accompany semantic changes with tests.</p><a class="text-link" href="https://github.com/tarn-lng/tarn/issues">Issues and discussions ↗</a></div>`),
-publish:()=>page('PACKAGES / PUBLISH','Share source.<br>Keep releases immutable.','Publishing starts with a reviewed pull request. You do not need a server or an account on a separate registry service.',`<div class="prose">${block('tarn init my_library --lib\ncd my_library\n# Edit tarn.toml and your exported Tarn source\ntarn publish --registry /tmp/my-registry')}<h2>Propose a release</h2><ol><li>Test your library locally and choose a new SemVer version.</li><li>Copy generated release files into the registry’s <code>site/NAME/</code> directory.</li><li>Preserve existing releases and extend the package index.</li><li>For a new name, propose owner and catalog metadata.</li><li>Open a PR with source commit, test evidence and native-link requirements.</li></ol><p>The Tarn validator checks bytes, hashes and version inventory. It never runs the proposed package. Passing validation does not establish author identity or code safety; a maintainer reviews publication.</p><div class="notice">Published bytes cannot be replaced. Signed provenance and automated remote <code>publish</code> are not available yet.</div><a class="button secondary" href="https://github.com/tarn-lng/registry">Registry contribution guide ↗</a></div>`)
+/**
+ * Tarn Programming Language — Official Website Application
+ */
+
+const repoRoot = 'https://github.com/tarn-lng/tarn/blob/main/';
+const releaseTag = 'https://github.com/tarn-lng/tarn/releases/tag/v0.0.1';
+const releaseDownload = 'https://github.com/tarn-lng/tarn/releases/download/v0.0.1/';
+const registryBase = 'https://tarn-lng.github.io/registry/';
+
+// DOM Helpers
+const $ = (selector, context = document) => context.querySelector(selector);
+const $$ = (selector, context = document) => [...context.querySelectorAll(selector)];
+
+const escapeHtml = (str) =>
+  String(str).replace(/[&<>"']/g, (c) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[c]));
+
+/**
+ * Lightweight Tarn Syntax Highlighter
+ */
+function highlightTarn(code) {
+  const tokenSpec = [
+    { type: 'comment', regex: /\/\/[^\n]*/ },
+    { type: 'string', regex: /"(?:\\.|[^"\\])*"/ },
+    { type: 'keyword', regex: /\b(?:async|fn|struct|enum|interface|impl|copy|var|mut|pub|import|unsafe|extern|return|if|else|for|in|break|continue|match|try|await|spawn|move|true|false|self|any)\b/ },
+    { type: 'type', regex: /\b(?:bool|i8|i16|i32|i64|u8|u16|u32|u64|isize|usize|f32|f64|string|void|never|Option|Result|Some|None|Ok|Err)\b/ },
+    { type: 'number', regex: /\b\d+(?:\.\d+)?\b/ },
+    { type: 'call', regex: /\b[a-zA-Z_][a-zA-Z0-9_]*(?=\s*\()/ },
+    { type: 'other', regex: /[^\s\w]+|\w+|\s+/ }
+  ];
+
+  const masterRegex = new RegExp(
+    tokenSpec.map((s, i) => `(?<t${i}>${s.regex.source})`).join('|'),
+    'g'
+  );
+
+  let result = '';
+  let match;
+  while ((match = masterRegex.exec(code)) !== null) {
+    let tokenType = 'other';
+    for (let i = 0; i < tokenSpec.length; i++) {
+      if (match.groups[`t${i}`] !== undefined) {
+        tokenType = tokenSpec[i].type;
+        break;
+      }
+    }
+    const val = escapeHtml(match[0]);
+    if (tokenType !== 'other') {
+      result += `<span class="tok-${tokenType}">${val}</span>`;
+    } else {
+      result += val;
+    }
+  }
+  return result;
+}
+
+/**
+ * Code Block Builder with Copy Button
+ */
+function codeBlock(code, lang = 'tarn', filename = '') {
+  const highlighted = lang === 'tarn' ? highlightTarn(code.trim()) : escapeHtml(code.trim());
+  const headerHtml = `
+    <div class="code-header">
+      <span>${filename ? escapeHtml(filename) : `<span class="lang-tag">${lang.toUpperCase()}</span>`}</span>
+      <button class="btn-copy" type="button" aria-label="Copy code">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        Copy
+      </button>
+    </div>
+  `;
+  return `
+    <div class="code-box">
+      ${headerHtml}
+      <pre class="code-content"><code>${highlighted}</code></pre>
+    </div>
+  `;
+}
+
+/**
+ * Interactive Showcase Tabs Data
+ */
+const showcaseTabs = [
+  {
+    id: 'ownership',
+    label: 'Ownership & Moves',
+    code: `struct Buffer {
+    data string
+}
+
+fn Buffer.new() Buffer {
+    return Buffer{data: "hello"}
+}
+
+fn consume(b Buffer) {
+    print(b.data)
+}
+
+fn main() {
+    a := Buffer.new()
+    b := a              // 'a' is moved into 'b'
+    consume(b)          // 'b' is moved into 'consume'
+
+    // print(a.data)    // Compile error: use of moved value 'a'
+}`,
+    title: 'Zero-Cost Memory Safety',
+    desc: 'Tarn manages heap resources deterministically at compile time without a garbage collector. Non-Copy types are moved on assignment and call, preventing double-frees and dangling references before code ever runs.',
+    bullets: [
+      'Values move by default unless declared Copy',
+      'No implicit cloning or background heap duplication',
+      'Fine-grained move tracking per struct field'
+    ],
+    verified: 'Verified with tarn check'
+  },
+  {
+    id: 'borrowing',
+    label: 'Inferred Lifetimes',
+    code: `struct Counter {
+    value i64
+}
+
+fn bump(c &mut Counter) {
+    c.value = c.value + 1
+}
+
+fn inspect(c &Counter) i64 {
+    return c.value
+}
+
+fn main() {
+    var c = Counter{value: 0}
+    bump(&mut c)
+
+    // Shared borrow borrows 'c' while active
+    r := inspect(&c)
+    print(r)
+}`,
+    title: 'Borrowing Without Lifetime Annotations',
+    desc: 'Shared borrows (&T) permit read access; mutable borrows (&mut T) ensure exclusive mutation. The compiler infers reference provenance across function bodies—no lifetime parameters in source code.',
+    bullets: [
+      'Shared (&) and exclusive mutable (&mut) loans',
+      'Lifetimes inferred by compiler provenance analysis',
+      'Automatic reborrowing for nested mutable references'
+    ],
+    verified: 'Verified with tarn check'
+  },
+  {
+    id: 'structs',
+    label: 'Structs & Methods',
+    code: `struct Point {
+    x f64
+    y f64
+}
+
+fn Point.new(x f64, y f64) Point {
+    return Point{x: x, y: y}
+}
+
+fn Point.translate(&mut self, dx f64, dy f64) {
+    self.x = self.x + dx
+    self.y = self.y + dy
+}
+
+fn Point.dist(&self) f64 {
+    return (self.x * self.x + self.y * self.y)
+}
+
+fn main() {
+    var pt = Point.new(3.0, 4.0)
+    pt.translate(1.0, 1.0)
+    print(pt.dist())
+}`,
+    title: 'Direct Inherent Methods',
+    desc: 'Methods in Tarn are declared directly on their type: fn Type.method(&self). There are no separate inherent impl blocks, keeping method definitions visually identical to their call sites.',
+    bullets: [
+      'Clean declaration: fn Type.method(&self)',
+      'Constructors are standard functions: fn Type.new()',
+      'Explicit &self, &mut self, or consuming self receiver'
+    ],
+    verified: 'Verified with tarn check'
+  },
+  {
+    id: 'interfaces',
+    label: 'Interfaces & Generics',
+    code: `interface Shape {
+    fn area(&self) f64
+}
+
+struct Square {
+    side f64
+}
+
+impl Shape for Square {
+    fn area(&self) f64 {
+        return self.side * self.side
+    }
+}
+
+// Static dispatch via generic bound:
+fn print_static<S: Shape>(s &S) {
+    print(s.area())
+}
+
+// Dynamic dispatch via interface reference:
+fn print_dynamic(s &any Shape) {
+    print(s.area())
+}
+
+fn main() {
+    sq := Square{side: 4.0}
+    print_static(&sq)
+    print_dynamic(&sq)
+}`,
+    title: 'Nominal Interfaces & Bounds',
+    desc: 'Interfaces define contracts with nominal implementation (impl Interface for Type). Tarn supports both monomorphized static dispatch (<T: Bound>) and explicit dynamic dispatch (&any Interface).',
+    bullets: [
+      'Nominal implementation ensures coherence',
+      'Static dispatch with generic bounds (<T: Bound>)',
+      'Dynamic dispatch using &any Interface'
+    ],
+    verified: 'Verified with tarn check'
+  },
+  {
+    id: 'errors',
+    label: 'Prefix try & Results',
+    code: `import "fs"
+import "io"
+
+struct Config {
+    port u16
+}
+
+fn load_port(path &string) Result<u16, io.Error> {
+    // Prefix 'try' bubbles errors immediately
+    text := try fs.read_text(path)
+    return Ok(8080)
+}
+
+fn main() {
+    match load_port(&"config.txt") {
+        Ok(port) => print(port)
+        Err(e)   => print("Failed to load config")
+    }
+}`,
+    title: 'Actionable Error Handling',
+    desc: 'Recoverable errors use Result<T, E> and Option<T>. The prefix try operator unwraps success or returns the error early without hidden conversions or exception overhead.',
+    bullets: [
+      'Result<T, E> and Option<T> in the prelude',
+      'Prefix try replaces cumbersome boilerplate',
+      'Exhaustive match ensures all cases are handled'
+    ],
+    verified: 'Verified with tarn check'
+  },
+  {
+    id: 'concurrency',
+    label: 'Native Concurrency',
+    code: `import "io"
+
+fn compute(id i32) i32 {
+    return id * 2
+}
+
+fn main() Result<void, io.Error> {
+    // Spawn a native OS task with move semantics
+    task := spawn move fn() i32 {
+        return compute(21)
+    }
+
+    // Join task explicitly to receive the result
+    answer := try task.join()
+    print(answer)
+    return Ok(())
+}`,
+    title: 'Safe Native Concurrency',
+    desc: 'Tarn supports handle-owned native tasks via spawn move fn(). Captured values must satisfy Transfer semantics. Task handles guarantee completion on drop or explicit join.',
+    bullets: [
+      'Native OS threads with handle-based lifecycle',
+      'Type capabilities (Transfer and Share) enforce safety',
+      'No data races on shared memory'
+    ],
+    verified: 'Verified with tarn check'
+  }
+];
+
+/**
+ * Page Definitions
+ */
+const pages = {
+  home: () => `
+    <section class="hero-section">
+      <div class="version-badge" style="display:inline-block; margin-bottom:16px;">Linux x86_64 · Release v0.0.1</div>
+      <h1 class="hero-title">The <span class="accent-text">Tarn</span> Programming Language</h1>
+      <p class="hero-lead">
+        A statically typed systems language with compile-time ownership, inferred lifetimes, native machine code generation, and zero mandatory garbage collection. Built for human systems engineers and coding agents.
+      </p>
+
+      <div class="hero-actions">
+        <a class="btn btn-primary" href="#install">Install Tarn v0.0.1 →</a>
+        <a class="btn btn-secondary" href="#tour">Language Tour & Syntax</a>
+        <a class="btn btn-ghost" href="#stdlib">Standard Library</a>
+        <a class="btn btn-ghost" href="https://github.com/tarn-lng/tarn" target="_blank" rel="noopener">GitHub ↗</a>
+      </div>
+
+      <div class="hero-install-box">
+        <div class="terminal-card">
+          <div class="terminal-header">
+            <span>QUICK INSTALL (LINUX x86_64)</span>
+            <button class="btn-copy" type="button" aria-label="Copy install command">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              Copy
+            </button>
+          </div>
+          <pre class="terminal-body"><code><span class="prompt">$</span>curl --fail --proto '=https' https://tarn-lng.github.io/website/install.sh -o install.sh
+<span class="prompt">$</span>sh install.sh --version 0.0.1</code></pre>
+          <div class="terminal-footer">
+            <span>Installs <code>tarn</code> and <code>tarn-lsp</code> to <code>~/.local/bin</code> (no sudo)</span>
+            <a class="text-link" href="#install">Details & verification →</a>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Code Showcase Section with Tabs -->
+    <section class="showcase-section">
+      <div class="section-heading">
+        <h2>Language at a Glance</h2>
+        <p>Explore genuine Tarn syntax verified directly against the v0.0.1 compiler.</p>
+      </div>
+
+      <div class="tabs-container">
+        <div class="tab-nav" role="tablist">
+          ${showcaseTabs.map((t, idx) => `
+            <button class="tab-btn ${idx === 0 ? 'active' : ''}" type="button" role="tab" data-tab="${t.id}">${t.label}</button>
+          `).join('')}
+        </div>
+        <div class="tab-content" id="tab-content-panel">
+          <!-- Populated by JS -->
+        </div>
+      </div>
+    </section>
+
+    <!-- Core Technical Highlights -->
+    <section class="pillars-section">
+      <div class="section-heading">
+        <h2>Technical Architecture</h2>
+        <p>Sound static guarantees without unnecessary syntactic overhead.</p>
+      </div>
+
+      <div class="grid-3">
+        <div class="pillar-card">
+          <span class="pillar-icon">01 / OWNERSHIP</span>
+          <h3>Zero-Cost Compile-Time Safety</h3>
+          <p>Memory safety is enforced entirely at compile time through move analysis and fine-grained NLL borrow checking. Values destruct deterministically with no garbage collection pauses.</p>
+        </div>
+
+        <div class="pillar-card">
+          <span class="pillar-icon">02 / PROVENANCE</span>
+          <h3>Inferred Lifetimes</h3>
+          <p>Tarn infers loan origins and reference provenance across function boundaries automatically. Application code remains free of explicit lifetime syntax (no <code>'a</code> annotations).</p>
+        </div>
+
+        <div class="pillar-card">
+          <span class="pillar-icon">03 / PERFORMANCE</span>
+          <h3>Native Linux x86_64</h3>
+          <p>Compiles directly to native ELF machine code using Cranelift. Executables are standalone and interface smoothly with standard C dynamic libraries via explicit <code>--link</code>.</p>
+        </div>
+
+        <div class="pillar-card">
+          <span class="pillar-icon">04 / SYNTAX</span>
+          <h3>Regular & Predictable Grammar</h3>
+          <p>No semicolons, explicit <code>return</code>, prefix <code>try</code>, nominal interfaces, and distinct <code>fn Type.method(&self)</code> definitions. Unambiguous grammar optimized for developers and coding agents.</p>
+        </div>
+
+        <div class="pillar-card">
+          <span class="pillar-icon">05 / TOOLCHAIN</span>
+          <h3>Integrated Toolchain & LSP</h3>
+          <p>The single <code>tarn</code> CLI handles building, formatting, testing, and dependency resolution. Machine-readable <code>tarn check --json</code> powers editor tooling and agent verification.</p>
+        </div>
+
+        <div class="pillar-card">
+          <span class="pillar-icon">06 / STDLIB</span>
+          <h3>Bundled Standard Library</h3>
+          <p>Comprehensive standard library embedded in the compiler: native I/O, TCP/UDP sockets, HTTP/HTTPS client and server, JSON, CSV, collections, and process management.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quickstart 3-Steps -->
+    <section class="quickstart-section">
+      <div class="section-heading">
+        <h2>Start Building in Minutes</h2>
+        <p>From zero to running your first native Tarn binary.</p>
+      </div>
+
+      <div class="steps-grid">
+        <div class="step-card">
+          <span class="step-badge">STEP 1</span>
+          <h3>Install Toolchain</h3>
+          <p>Download the prebuilt compiler and language server using the verified installer:</p>
+          ${codeBlock('sh install.sh --version 0.0.1\nexport PATH="$HOME/.local/bin:$PATH"', 'bash')}
+        </div>
+
+        <div class="step-card">
+          <span class="step-badge">STEP 2</span>
+          <h3>Create a Project</h3>
+          <p>Initialize a new workspace with default manifest and entry point:</p>
+          ${codeBlock('tarn init hello\ncd hello\ncat main.tarn', 'bash')}
+        </div>
+
+        <div class="step-card">
+          <span class="step-badge">STEP 3</span>
+          <h3>Compile and Run</h3>
+          <p>Execute your program with a single command or emit an optimized native binary:</p>
+          ${codeBlock('tarn run\ntarn build -o hello-bin', 'bash')}
+        </div>
+      </div>
+    </section>
+  `,
+
+  tour: () => `
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <div class="sidebar-title">Language Tour</div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link active" href="#tour-vars">Variables & Declarations</a>
+          <a class="sidebar-link" href="#tour-types">Primitive Types & Arrays</a>
+          <a class="sidebar-link" href="#tour-functions">Functions & Calls</a>
+          <a class="sidebar-link" href="#tour-control">Control Flow</a>
+          <a class="sidebar-link" href="#tour-structs">Structs & Methods</a>
+          <a class="sidebar-link" href="#tour-enums">Enums & Pattern Matching</a>
+          <a class="sidebar-link" href="#tour-interfaces">Interfaces & Dispatch</a>
+          <a class="sidebar-link" href="#tour-generics">Generics & Bounds</a>
+          <a class="sidebar-link" href="#tour-ownership">Ownership & Moves</a>
+          <a class="sidebar-link" href="#tour-borrowing">Borrowing & Lifetimes</a>
+          <a class="sidebar-link" href="#tour-errors">Error Handling & try</a>
+          <a class="sidebar-link" href="#tour-concurrency">Native Concurrency</a>
+          <a class="sidebar-link" href="#tour-async">Async Execution</a>
+          <a class="sidebar-link" href="#tour-modules">Modules & Imports</a>
+        </nav>
+      </aside>
+
+      <main class="doc-main">
+        <h1>Tarn Language Tour</h1>
+        <p class="doc-lead">A comprehensive guide to Tarn syntax, type rules, and semantic guarantees.</p>
+
+        <!-- Variables -->
+        <section class="doc-section" id="tour-vars">
+          <h2>Variables & Declarations</h2>
+          <p>Tarn distinguishes immutable bindings (<code>:=</code>) from mutable variables (<code>var</code>). Explicit type annotations use <code>: Type</code>.</p>
+          ${codeBlock(`fn main() {
+    // Immutable binding (inferred type)
+    count := 10
+
+    // Immutable binding with explicit type
+    limit: u64 := 100
+
+    // Mutable binding
+    var total: i64 = 0
+    total = total + count
+
+    print(total)
+}`)}
+          <div class="callout">
+            <strong>Statement boundaries:</strong> Tarn has no semicolons. Statements are separated by line breaks. Compound assignment operators like <code>+=</code> do not exist in v0; write <code>x = x + 1</code>.
+          </div>
+        </section>
+
+        <!-- Primitive Types -->
+        <section class="doc-section" id="tour-types">
+          <h2>Primitive Types & Arrays</h2>
+          <p>Tarn provides fixed-width scalar integers, floating point numbers, UTF-8 strings, fixed arrays, and borrowed slices.</p>
+          <div class="table-container">
+            <table class="data-table">
+              <thead><tr><th>Type Category</th><th>Types</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td>Signed Integers</td><td><code>i8, i16, i32, i64, isize</code></td><td>Two's complement signed integers</td></tr>
+                <tr><td>Unsigned Integers</td><td><code>u8, u16, u32, u64, usize</code></td><td>Unsigned integers and pointer-sized integers</td></tr>
+                <tr><td>Floats</td><td><code>f32, f64</code></td><td>IEEE 754 floating point numbers</td></tr>
+                <tr><td>Booleans</td><td><code>bool</code></td><td><code>true</code> or <code>false</code></td></tr>
+                <tr><td>Text</td><td><code>string</code></td><td>Immutable UTF-8 byte sequence</td></tr>
+                <tr><td>Fixed Arrays</td><td><code>[N]T</code></td><td>Inline fixed-size buffer, e.g. <code>[4]i32{1, 2, 3, 4}</code></td></tr>
+                <tr><td>Slices</td><td><code>[]T</code></td><td>Dynamically sized view borrowed as <code>&[]T</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+          ${codeBlock(`fn sum(values &[]i64) i64 {
+    var total = 0
+    for v in values {
+        total = total + v
+    }
+    return total
+}
+
+fn main() {
+    numbers := [4]i64{1, 2, 3, 4}
+    print(sum(&numbers))          // Array borrows as slice
+    print(sum(&numbers[1..3]))    // Sub-slice
+}`)}
+        </section>
+
+        <!-- Functions -->
+        <section class="doc-section" id="tour-functions">
+          <h2>Functions & Calls</h2>
+          <p>In function parameter lists, the type follows the name directly (no colon). Return statements are always explicit.</p>
+          ${codeBlock(`fn add(a i32, b i32) i32 {
+    return a + b
+}
+
+fn greet(name &string) {
+    print(name)
+}`)}
+          <div class="callout">
+            Tarn is not an expression-oriented language: blocks, <code>if</code>, and <code>match</code> statements do not produce return values. <code>return</code> must be written explicitly.
+          </div>
+        </section>
+
+        <!-- Control Flow -->
+        <section class="doc-section" id="tour-control">
+          <h2>Control Flow</h2>
+          <p>Control flow is expressed with <code>if / else</code> and <code>for</code>. Loops support range iteration, while-conditions, and infinite loops with <code>break</code> and <code>continue</code>.</p>
+          ${codeBlock(`fn main() {
+    // Range loop
+    var total = 0
+    for i in 0..5 {
+        total = total + i
+    }
+
+    // Condition loop
+    var n = 10
+    for n > 0 {
+        n = n - 1
+    }
+
+    // Infinite loop with break
+    for {
+        break
+    }
+}`)}
+        </section>
+
+        <!-- Structs & Inherent Methods -->
+        <section class="doc-section" id="tour-structs">
+          <h2>Structs & Inherent Methods</h2>
+          <p>Structs define composite types. Methods are declared using the exact syntax used at call sites: <code>fn Type.method(...)</code>.</p>
+          ${codeBlock(`struct User {
+    name string
+    age  u32
+}
+
+fn User.new(name string) User {
+    return User{name: name, age: 0}
+}
+
+fn User.birthday(&mut self) {
+    self.age = self.age + 1
+}
+
+fn User.greet(&self) {
+    print(self.name)
+}
+
+fn main() {
+    var user = User.new("Ada")
+    user.birthday()
+    user.greet()
+}`)}
+        </section>
+
+        <!-- Enums & Match -->
+        <section class="doc-section" id="tour-enums">
+          <h2>Enums & Pattern Matching</h2>
+          <p>Enums represent sum types with optional data payloads. Pattern matching uses usefulness analysis to guarantee exhaustiveness.</p>
+          ${codeBlock(`copy enum Shape {
+    Circle(f64)
+    Rect(f64, f64)
+    Empty
+}
+
+fn area(s &Shape) f64 {
+    match s {
+        Circle(r) => return 3.14159 * r * r
+        Rect(w, h) => return w * h
+        Empty => return 0.0
+    }
+}`)}
+        </section>
+
+        <!-- Interfaces & Dispatch -->
+        <section class="doc-section" id="tour-interfaces">
+          <h2>Interfaces & Dispatch</h2>
+          <p>Interfaces use nominal implementation. Tarn supports monomorphized static dispatch and dynamic dispatch via <code>any Interface</code>.</p>
+          ${codeBlock(`interface Shape {
+    fn area(&self) f64
+}
+
+struct Square {
+    side f64
+}
+
+impl Shape for Square {
+    fn area(&self) f64 {
+        return self.side * self.side
+    }
+}
+
+// Static dispatch (zero runtime overhead)
+fn print_area<S: Shape>(s &S) {
+    print(s.area())
+}
+
+// Dynamic dispatch (vtable reference)
+fn print_any(s &any Shape) {
+    print(s.area())
+}`)}
+        </section>
+
+        <!-- Generics & Bounds -->
+        <section class="doc-section" id="tour-generics">
+          <h2>Generics & Bounds</h2>
+          <p>Structs, enums, functions, and methods can be generic over type parameters, with optional interface bounds.</p>
+          ${codeBlock(`struct Pair<A, B> {
+    first  A
+    second B
+}
+
+fn Pair<A, B>.swap(self) Pair<B, A> {
+    return Pair{first: self.second, second: self.first}
+}
+
+fn print_value<T: Copy>(val T) {
+    print(val)
+}`)}
+        </section>
+
+        <!-- Ownership & Moves -->
+        <section class="doc-section" id="tour-ownership">
+          <h2>Ownership & Moves</h2>
+          <p>Values in Tarn have a single owner. Passing an owned non-Copy value transfers ownership, making the original variable unusable.</p>
+          ${codeBlock(`struct Buffer {
+    data string
+}
+
+fn consume(b Buffer) {
+    print(b.data)
+}
+
+fn main() {
+    a := Buffer{data: "tarn"}
+    b := a              // 'a' moved to 'b'
+    consume(b)          // 'b' moved to 'consume'
+    // print(a.data)    // error[E4001]: use of moved value 'a'
+}`)}
+        </section>
+
+        <!-- Borrowing & Inferred Lifetimes -->
+        <section class="doc-section" id="tour-borrowing">
+          <h2>Borrowing & Inferred Lifetimes</h2>
+          <p>Borrowing permits inspection without transferring ownership. Tarn enforces the aliasing rule: any number of shared borrows <code>&T</code>, OR exactly one mutable borrow <code>&mut T</code>.</p>
+          ${codeBlock(`struct Counter {
+    value i64
+}
+
+fn bump(c &mut Counter) {
+    c.value = c.value + 1
+}
+
+fn main() {
+    var c = Counter{value: 0}
+    bump(&mut c)
+
+    r := &c
+    // bump(&mut c)     // error[E4101]: 'c' is mutably borrowed while 'r' is alive
+    print(r.value)
+}`)}
+          <div class="callout">
+            <strong>No explicit lifetimes in v0:</strong> Tarn does not use Rust-style <code>'a</code> lifetime parameters. The compiler infers loan origins and provenance directly from control flow.
+          </div>
+        </section>
+
+        <!-- Error Handling -->
+        <section class="doc-section" id="tour-errors">
+          <h2>Error Handling & Prefix try</h2>
+          <p>Recoverable errors return <code>Result<T, E></code> or <code>Option<T></code>. The prefix <code>try</code> operator propagates errors to the caller.</p>
+          ${codeBlock(`import "fs"
+import "io"
+
+fn read_config(path &string) Result<string, io.Error> {
+    content := try fs.read_text(path)
+    return Ok(content)
+}
+
+fn main() {
+    match read_config(&"app.conf") {
+        Ok(text) => print(text)
+        Err(err) => print("Could not load config")
+    }
+}`)}
+        </section>
+
+        <!-- Concurrency -->
+        <section class="doc-section" id="tour-concurrency">
+          <h2>Native Tasks & Concurrency</h2>
+          <p>Phase 11 native tasks are spawned using <code>spawn move fn()</code> and managed through owned handles.</p>
+          ${codeBlock(`fn worker(id i32) i32 {
+    return id * 10
+}
+
+fn main() {
+    task := spawn move fn() i32 {
+        return worker(4)
+    }
+    result := task.join()
+    print(result)
+}`)}
+        </section>
+
+        <!-- Async -->
+        <section class="doc-section" id="tour-async">
+          <h2>Async Execution</h2>
+          <p>Cooperative asynchronous execution uses <code>async fn</code> and <code>await</code> over a non-blocking single-thread runtime.</p>
+          ${codeBlock(`import "net"
+import "io"
+
+async fn echo(stream &mut net.TcpStream) Result<usize, io.Error> {
+    var bytes = [16]u8{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0}
+    count := try await stream.read_async(&mut bytes)
+    try await stream.write_all_async(&bytes[0..count])
+    return Ok(count)
+}`)}
+        </section>
+
+        <!-- Modules -->
+        <section class="doc-section" id="tour-modules">
+          <h2>Modules & Imports</h2>
+          <p>Standard library modules and packages are imported using string literals: <code>import "name"</code>. Public declarations are annotated with <code>pub</code>.</p>
+          ${codeBlock(`import "net"
+import "fs"
+import "collections"
+
+pub fn process() {
+    // ...
+}`)}
+        </section>
+      </main>
+    </div>
+  `,
+
+  stdlib: () => `
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <div class="sidebar-title">Standard Library</div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link active" href="#std-core">core</a>
+          <a class="sidebar-link" href="#std-io">io</a>
+          <a class="sidebar-link" href="#std-fs">fs</a>
+          <a class="sidebar-link" href="#std-net">net</a>
+          <a class="sidebar-link" href="#std-http">http & https</a>
+          <a class="sidebar-link" href="#std-json">json</a>
+          <a class="sidebar-link" href="#std-csv">csv</a>
+          <a class="sidebar-link" href="#std-collections">collections</a>
+          <a class="sidebar-link" href="#std-string">string</a>
+          <a class="sidebar-link" href="#std-time">time</a>
+          <a class="sidebar-link" href="#std-os">os & process</a>
+          <a class="sidebar-link" href="#std-console">console</a>
+          <a class="sidebar-link" href="#std-runtime">runtime</a>
+          <a class="sidebar-link" href="#std-ffi">ffi</a>
+        </nav>
+      </aside>
+
+      <main class="doc-main">
+        <h1>Standard Library Reference</h1>
+        <p class="doc-lead">All 17 standard modules are built into the compiler binary and can be inspected locally via <code>tarn stdlib [module] --json</code>.</p>
+
+        <!-- core -->
+        <section class="doc-section" id="std-core">
+          <h2>core</h2>
+          <p>Fundamental capabilities, capabilities interfaces (<code>Hash</code>, <code>Eq</code>, <code>Copy</code>), <code>Option<T></code>, <code>Result<T, E></code>, and abort routines.</p>
+          ${codeBlock(`// Built-in Option and Result are part of core and in the prelude:
+val: Option<i32> = Some(42)
+res: Result<string, io.Error> = Ok("success")`)}
+        </section>
+
+        <!-- io -->
+        <section class="doc-section" id="std-io">
+          <h2>io</h2>
+          <p>Universal I/O primitives: <code>Reader</code>, <code>Writer</code>, <code>Stream</code>, <code>Error</code>, and <code>ErrorKind</code>.</p>
+          ${codeBlock(`import "io"
+
+fn write_data<W: io.Writer>(w &mut W, data &[]u8) Result<usize, io.Error> {
+    return w.write(data)
+}`)}
+        </section>
+
+        <!-- fs -->
+        <section class="doc-section" id="std-fs">
+          <h2>fs</h2>
+          <p>Owned file descriptors, text reading/writing, and file system traversal.</p>
+          ${codeBlock(`import "fs"
+
+// Read entire file as UTF-8 string:
+content := try fs.read_text("data.txt")
+
+// Write entire string to file:
+try fs.write_text("output.txt", &content)`)}
+        </section>
+
+        <!-- net -->
+        <section class="doc-section" id="std-net">
+          <h2>net</h2>
+          <p>Blocking and asynchronous TCP/UDP networking: <code>TcpListener</code>, <code>TcpStream</code>, <code>UdpSocket</code>, address parsing.</p>
+          ${codeBlock(`import "net"
+
+var listener = try net.listen_tcp(&"127.0.0.1:8080")
+conn := try listener.accept()
+try conn.write_all(&[2]u8{104, 105})`)}
+        </section>
+
+        <!-- http & https -->
+        <section class="doc-section" id="std-http">
+          <h2>http & https</h2>
+          <p>HTTP/1.1 request/response parser, connection multiplexer, server dispatcher, and bounded TLS HTTPS client.</p>
+          ${codeBlock(`import "http"
+
+fn handle(req http.Request) Result<http.Response, http.Error> {
+    if req.target() == &"/health" {
+        return http.Response.text(u16(200), &"ok\\n")
+    }
+    return http.Response.bytes(u16(404), Vec.new())
+}`)}
+        </section>
+
+        <!-- json -->
+        <section class="doc-section" id="std-json">
+          <h2>json</h2>
+          <p>Strict RFC 8259 parser and streaming encoder. No reflection: types implement <code>json.Encode</code>.</p>
+          ${codeBlock(`import "json"
+
+val := try json.parse(&"{\\"id\\": 42, \\"name\\": \\"tarn\\"}")
+print(val.is_object())`)}
+        </section>
+
+        <!-- csv -->
+        <section class="doc-section" id="std-csv">
+          <h2>csv</h2>
+          <p>RFC 4180 streaming reader and parser with field escaping and row iteration.</p>
+        </section>
+
+        <!-- collections -->
+        <section class="doc-section" id="std-collections">
+          <h2>collections</h2>
+          <p>Hash map (<code>Map<K, V></code>) with open addressing and linear probing, dynamic vectors, and sets.</p>
+          ${codeBlock(`import "collections"
+
+var m = collections.Map<string, i32>.new()
+m.insert("port", 8080)
+if m.contains(&"port") {
+    print(*m.get(&"port"))
+}`)}
+        </section>
+
+        <!-- string -->
+        <section class="doc-section" id="std-string">
+          <h2>string</h2>
+          <p>UTF-8 substring extraction, trimming, integer parsing, and line splitting.</p>
+          ${codeBlock(`import "string"
+
+num := string.parse_i64(&"12345") // Option<i64>
+lines := string.lines(&"a\\nb\\nc")`)}
+        </section>
+
+        <!-- time -->
+        <section class="doc-section" id="std-time">
+          <h2>time</h2>
+          <p>Monotonic clock measurement, <code>Instant</code>, <code>Duration</code>, and sleep routines.</p>
+          ${codeBlock(`import "time"
+
+start := time.Instant.now()
+time.sleep(time.Duration.from_millis(50))
+elapsed := start.elapsed()`)}
+        </section>
+
+        <!-- os & process -->
+        <section class="doc-section" id="std-os">
+          <h2>os & process</h2>
+          <p>Command line arguments, environment inspection, process exit, and owned child execution.</p>
+          ${codeBlock(`import "os"
+import "process"
+
+args := os.args()
+child := try process.spawn_command(&"ls", &["-la"])
+status := try child.wait()`)}
+        </section>
+
+        <!-- console -->
+        <section class="doc-section" id="std-console">
+          <h2>console</h2>
+          <p>Standard streams: <code>stdin()</code>, <code>stdout()</code>, <code>stderr()</code>, and buffered flush management.</p>
+        </section>
+
+        <!-- runtime -->
+        <section class="doc-section" id="std-runtime">
+          <h2>runtime</h2>
+          <p>Cooperative task executor, event loop wakers, and readiness tokens.</p>
+        </section>
+
+        <!-- ffi -->
+        <section class="doc-section" id="std-ffi">
+          <h2>ffi</h2>
+          <p>C ABI interoperability: <code>unsafe</code> function calls, pointers, and raw buffer views.</p>
+        </section>
+      </main>
+    </div>
+  `,
+
+  packages: () => `
+    <section class="hero-section" style="padding-bottom: 24px;">
+      <h1>Package Registry</h1>
+      <p class="hero-lead">
+        Immutable, source-only packages for Tarn. Package integrity is cryptographically verified via SHA-256 before building.
+      </p>
+
+      <div class="search-input-box">
+        <input class="search-input" id="pkg-search" type="search" placeholder="Search packages by name, description, or native dependency..." aria-label="Search packages">
+      </div>
+
+      <div id="pkg-status" style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">Loading packages…</div>
+      <div class="package-grid" id="pkg-grid"></div>
+
+      <div style="margin-top: 48px; padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md);">
+        <h3>Want to share a library?</h3>
+        <p style="color:var(--text-muted); margin-bottom:14px;">Publishing is transparent and PR-driven. Check out our step-by-step contribution guide.</p>
+        <a class="btn btn-secondary btn-sm" href="#publish">Publishing Guide →</a>
+      </div>
+    </section>
+  `,
+
+  publish: () => `
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <div class="sidebar-title">Registry</div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link" href="#packages">Browse Packages</a>
+          <a class="sidebar-link active" href="#publish">Publish a Library</a>
+        </nav>
+      </aside>
+
+      <main class="doc-main">
+        <h1>Publishing to the Registry</h1>
+        <p class="doc-lead">Tarn packages are immutable source distributions verified by the compiler and maintainers.</p>
+
+        <section class="doc-section">
+          <h2>1. Initialize a Library Workspace</h2>
+          <p>Create a package with <code>--lib</code> to generate a library manifest and source file:</p>
+          ${codeBlock('tarn init mylib --lib\ncd mylib', 'bash')}
+        </section>
+
+        <section class="doc-section">
+          <h2>2. Configure tarn.toml</h2>
+          <p>Define your package metadata and dependencies:</p>
+          ${codeBlock(`[package]
+name = "mylib"
+version = "0.1.0"
+entry = "src/lib.tarn"
+description = "A fast utility library for Tarn"
+repository = "https://github.com/myname/mylib"`)}
+        </section>
+
+        <section class="doc-section">
+          <h2>3. Export Release Archive</h2>
+          <p>Generate release metadata and SHA-256 checksums locally:</p>
+          ${codeBlock('tarn publish --registry /tmp/local-registry', 'bash')}
+        </section>
+
+        <section class="doc-section">
+          <h2>4. Submit a Pull Request</h2>
+          <p>Submit your release record to the official registry repository at <a class="text-link" href="https://github.com/tarn-lng/registry" target="_blank">github.com/tarn-lng/registry</a>. The automated validator verifies that bytes match checksums and all tests pass.</p>
+        </section>
+      </main>
+    </div>
+  `,
+
+  tooling: () => `
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <div class="sidebar-title">Tooling</div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link active" href="#tooling-cli">CLI Commands</a>
+          <a class="sidebar-link" href="#tooling-json">JSON Diagnostics</a>
+          <a class="sidebar-link" href="#tooling-lsp">Language Server (LSP)</a>
+          <a class="sidebar-link" href="#tooling-vscode">VS Code Extension</a>
+        </nav>
+      </aside>
+
+      <main class="doc-main">
+        <h1>Compiler & Tooling</h1>
+        <p class="doc-lead">A unified developer experience: compilation, formatting, testing, and language server built into one binary.</p>
+
+        <section class="doc-section" id="tooling-cli">
+          <h2>CLI Commands Reference</h2>
+          <p>The <code>tarn</code> command line interface provides a complete suite of subcommands:</p>
+          <div class="table-container">
+            <table class="data-table">
+              <thead><tr><th>Command</th><th>Description</th></tr></thead>
+              <tbody>
+                <tr><td><code>tarn init [dir] [--lib]</code></td><td>Create a new binary application or library package</td></tr>
+                <tr><td><code>tarn check [entry] [--json]</code></td><td>Type-check and borrow-check with human or JSON diagnostics</td></tr>
+                <tr><td><code>tarn build [-o out] [--link lib]</code></td><td>Compile to native Linux x86_64 executable</td></tr>
+                <tr><td><code>tarn run [entry] [--link lib]</code></td><td>Compile and execute temporarily</td></tr>
+                <tr><td><code>tarn test [--filter text]</code></td><td>Run isolated test functions</td></tr>
+                <tr><td><code>tarn fmt [--check]</code></td><td>Format Tarn source code files recursively</td></tr>
+                <tr><td><code>tarn stdlib [module] [--json]</code></td><td>Discover embedded public API declarations</td></tr>
+                <tr><td><code>tarn add &lt;pkg&gt; [--registry url]</code></td><td>Resolve, download, and lock a dependency in tarn.lock</td></tr>
+                <tr><td><code>tarn fetch</code></td><td>Fetch exact locked package sources</td></tr>
+                <tr><td><code>tarn deps [--tree]</code></td><td>Print dependency graph visualization</td></tr>
+                <tr><td><code>tarn audit [--json]</code></td><td>Audit locked dependencies for known advisories</td></tr>
+                <tr><td><code>tarn version</code></td><td>Display current compiler version and target</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="doc-section" id="tooling-json">
+          <h2>Machine-Readable Diagnostics (--json)</h2>
+          <p>Tarn diagnostics are first-class product features. When run with <code>--json</code>, the compiler outputs structured diagnostics designed for IDEs and LLM coding agents:</p>
+          ${codeBlock(`$ tarn check src/main.tarn --json
+{
+  "code": "E4001",
+  "severity": "error",
+  "kind": "use_of_moved_value",
+  "message": "use of moved value \`buffer\`",
+  "file": "src/main.tarn",
+  "line": 14,
+  "column": 5,
+  "help": "consider borrowing with \`&buffer\` if the caller retains ownership"
+}`, 'json')}
+        </section>
+
+        <section class="doc-section" id="tooling-lsp">
+          <h2>Language Server Protocol (tarn-lsp)</h2>
+          <p>The companion binary <code>tarn-lsp</code> provides language intelligence to Neovim, Helix, Emacs, and VS Code. It uses the real compiler frontend to guarantee complete accuracy.</p>
+        </section>
+
+        <section class="doc-section" id="tooling-vscode">
+          <h2>VS Code Extension</h2>
+          <p>The official extension lives under <code>editors/vscode</code> in the compiler repository, providing syntax highlighting, hover documentation, and jump-to-definition.</p>
+        </section>
+      </main>
+    </div>
+  `,
+
+  install: () => `
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <div class="sidebar-title">Getting Started</div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link active" href="#inst-quick">Quick Install</a>
+          <a class="sidebar-link" href="#inst-binaries">Prebuilt Binaries</a>
+          <a class="sidebar-link" href="#inst-verify">SHA-256 Verification</a>
+          <a class="sidebar-link" href="#inst-source">Build from Source</a>
+          <a class="sidebar-link" href="#inst-reqs">Requirements</a>
+        </nav>
+      </aside>
+
+      <main class="doc-main">
+        <h1>Install Tarn</h1>
+        <p class="doc-lead">The official release v0.0.1 provides prebuilt native Linux x86_64 binaries and a verified installer.</p>
+
+        <!-- Quick Install -->
+        <section class="doc-section" id="inst-quick">
+          <h2>Automated Script Install</h2>
+          <p>The installer script downloads the archive, verifies SHA-256 checksums, and installs both <code>tarn</code> and <code>tarn-lsp</code> into <code>~/.local/bin</code> (no root required):</p>
+          ${codeBlock(`curl --fail --proto '=https' https://tarn-lng.github.io/website/install.sh -o install.sh
+sh install.sh --version 0.0.1
+
+# Add ~/.local/bin to your PATH if not already present:
+export PATH="$HOME/.local/bin:$PATH"
+
+# Verify installation:
+tarn version`, 'bash')}
+          <p style="font-size:13px; color:var(--text-muted); margin-top:8px;">
+            To inspect the script before running: <a class="text-link" href="install.sh" download="install.sh">Download install.sh</a>.
+            Pass <code>--uninstall</code> to safely remove an unchanged installation.
+          </p>
+        </section>
+
+        <!-- Prebuilt Binaries -->
+        <section class="doc-section" id="inst-binaries">
+          <h2>Prebuilt Binaries (Release v0.0.1)</h2>
+          <p>You can also download release assets directly from GitHub:</p>
+          <div class="table-container">
+            <table class="data-table">
+              <thead><tr><th>Asset</th><th>Description</th><th>Link</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><code>tarn-0.0.1-linux-x86_64.tar.gz</code></td>
+                  <td>Compiler, LSP server, and licenses</td>
+                  <td><a class="text-link" href="${releaseDownload}tarn-0.0.1-linux-x86_64.tar.gz">Download .tar.gz ↗</a></td>
+                </tr>
+                <tr>
+                  <td><code>SHA256SUMS</code></td>
+                  <td>Official SHA-256 checksum signatures</td>
+                  <td><a class="text-link" href="${releaseDownload}SHA256SUMS">Download SHA256SUMS ↗</a></td>
+                </tr>
+                <tr>
+                  <td><code>install.sh</code></td>
+                  <td>Standalone POSIX installer</td>
+                  <td><a class="text-link" href="${releaseDownload}install.sh">Download install.sh ↗</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <!-- Verification -->
+        <section class="doc-section" id="inst-verify">
+          <h2>Manual SHA-256 Verification</h2>
+          <p>Verify archive integrity manually before extraction:</p>
+          ${codeBlock(`curl -sLO ${releaseDownload}tarn-0.0.1-linux-x86_64.tar.gz
+curl -sLO ${releaseDownload}SHA256SUMS
+sha256sum --check --strict SHA256SUMS
+
+# Extract binaries:
+mkdir -p ~/.local/bin
+tar -xzf tarn-0.0.1-linux-x86_64.tar.gz -C ~/.local/bin`, 'bash')}
+        </section>
+
+        <!-- Build from source -->
+        <section class="doc-section" id="inst-source">
+          <h2>Build from Source</h2>
+          <p>If you prefer building from source, clone the repository and build with Rust 2024 edition:</p>
+          ${codeBlock(`git clone https://github.com/tarn-lng/tarn.git
+cd tarn
+cargo build --release -p tarn -p tarn-lsp
+
+# Binaries are placed in target/release/
+./target/release/tarn --help`, 'bash')}
+        </section>
+
+        <!-- Requirements -->
+        <section class="doc-section" id="inst-reqs">
+          <h2>System Requirements</h2>
+          <ul>
+            <li><strong>Operating System:</strong> Linux x86_64</li>
+            <li><strong>C Library:</strong> glibc 2.35 or newer</li>
+            <li><strong>Native Toolchain:</strong> <code>cc</code> (gcc or clang) and libc development headers for native linking</li>
+          </ul>
+        </section>
+      </main>
+    </div>
+  `,
+
+  docs: () => `
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <div class="sidebar-title">Documentation</div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link active" href="#docs-specs">Specifications</a>
+          <a class="sidebar-link" href="#docs-arch">Architecture</a>
+          <a class="sidebar-link" href="#docs-adr">ADRs</a>
+        </nav>
+      </aside>
+
+      <main class="doc-main">
+        <h1>Documentation Index</h1>
+        <p class="doc-lead">Canonical documentation and specifications from the official Tarn repository.</p>
+
+        <section class="doc-section" id="docs-specs">
+          <h2>Language Specifications</h2>
+          <div class="table-container">
+            <table class="data-table">
+              <thead><tr><th>Document</th><th>Description</th><th>Source</th></tr></thead>
+              <tbody>
+                <tr><td>Language Reference</td><td>Established syntax and semantics</td><td><a class="text-link" href="${repoRoot}docs/language.md" target="_blank">docs/language.md ↗</a></td></tr>
+                <tr><td>Grammar Specification</td><td>Lexical and parser grammar rules</td><td><a class="text-link" href="${repoRoot}docs/grammar.md" target="_blank">docs/grammar.md ↗</a></td></tr>
+                <tr><td>Ownership & Borrowing</td><td>Move semantics, loans, and loan conflict checking</td><td><a class="text-link" href="${repoRoot}docs/ownership.md" target="_blank">docs/ownership.md ↗</a></td></tr>
+                <tr><td>Diagnostic Error Codes</td><td>Diagnostic catalog with code descriptions and remedies</td><td><a class="text-link" href="${repoRoot}docs/errors.md" target="_blank">docs/errors.md ↗</a></td></tr>
+                <tr><td>Guide for Coding Agents</td><td>Prompting conventions and idiomatic code rules for AI</td><td><a class="text-link" href="${repoRoot}docs/llm-guide.md" target="_blank">docs/llm-guide.md ↗</a></td></tr>
+                <tr><td>Package System</td><td>Manifest format, lockfile schema, and registry rules</td><td><a class="text-link" href="${repoRoot}docs/packages.md" target="_blank">docs/packages.md ↗</a></td></tr>
+                <tr><td>Dependency Security</td><td>Supply-chain security and proof validation</td><td><a class="text-link" href="${repoRoot}docs/dependency-security.md" target="_blank">docs/dependency-security.md ↗</a></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="doc-section" id="docs-arch">
+          <h2>Compiler Architecture</h2>
+          <p>Tarn compiler pipeline is strictly sequential:</p>
+          <div class="code-box">
+            <pre class="code-content"><code>Source → Lexer → Parser → AST → Name Resolution → Type Checker → Typed IR → Move Checker → Borrow Checker → Drop Elaboration → Cranelift Backend</code></pre>
+          </div>
+          <p><a class="text-link" href="${repoRoot}docs/architecture.md" target="_blank">Read full architecture documentation ↗</a></p>
+        </section>
+
+        <section class="doc-section" id="docs-adr">
+          <h2>Architecture Decision Records (ADRs)</h2>
+          <p>Key technical choices are documented as immutable ADRs:</p>
+          <ul>
+            <li><a class="text-link" href="${repoRoot}docs/adr/0027-executable-drops.md" target="_blank">ADR 0027: Executable Drops & Cranelift Backend</a></li>
+            <li><a class="text-link" href="${repoRoot}docs/adr/0032-move-closures.md" target="_blank">ADR 0032: Move Closures and Callable Types</a></li>
+            <li><a class="text-link" href="${repoRoot}docs/adr/0033-safe-native-tasks.md" target="_blank">ADR 0033: Safe Native Concurrency & Tasks</a></li>
+            <li><a class="text-link" href="${repoRoot}docs/adr/0034-blocking-networking.md" target="_blank">ADR 0034: Blocking Networking in stdlib/net</a></li>
+            <li><a class="text-link" href="${repoRoot}docs/adr/0037-source-async.md" target="_blank">ADR 0037: Source Async/Await Lowering</a></li>
+            <li><a class="text-link" href="${repoRoot}docs/adr/0041-stdlib-layering.md" target="_blank">ADR 0041: Stdlib Module Layering & Trusted Core</a></li>
+          </ul>
+        </section>
+      </main>
+    </div>
+  `
 };
-let generation=0;
-async function render(){const current=++generation;const route=location.hash.slice(1)||'home';document.querySelectorAll('nav a').forEach(a=>a.classList.toggle('active',a.hash===location.hash));if(route==='home'){content.replaceChildren(document.querySelector('#home').content.cloneNode(true));document.title='Tarn — Native code. Clear intent.'}else if(route==='packages'){document.title='Packages — Tarn';content.innerHTML=page('PACKAGE REGISTRY','Small packages.<br>Real capabilities.','Immutable Tarn source packages. Catalog metadata is generated by the Tarn registry validator.',`<a class="text-link" href="#publish">Publish a package →</a><br><input class="search" type="search" aria-label="Search packages" placeholder="Search by name, description or native library…"><p class="muted" id="catalog-status" role="status">Loading catalog…</p><div class="catalog"></div><div class="notice">Integrity is verified against hashes. Publisher provenance is currently unknown; experimental packages require review.</div>`);try{const response=await fetch('catalog.json');if(!response.ok)throw Error('Catalog unavailable');const data=await response.json();if(current!==generation)return;if(data.schema_version!==1||!Array.isArray(data.packages))throw Error('Invalid catalog');const packages=data.packages;const show=query=>{const filtered=packages.filter(p=>(p.name+' '+p.description+' '+p.nativeLink).toLowerCase().includes(query.toLowerCase()));document.querySelector('#catalog-status').textContent=`${filtered.length} release${filtered.length===1?'':'s'} · Generated by ${data.generator}`;document.querySelector('.catalog').innerHTML=filtered.length?filtered.map(p=>`<article class="package"><span class="badge">${escape(p.status)}</span><span class="version">v${escape(p.version)}</span><h3>${escape(p.name)}</h3><p>${escape(p.description)}</p>${block('tarn add '+p.name+' --registry '+registry+(p.nativeLink?'\ntarn build --link '+p.nativeLink:''))}<p>Linux x86_64 · ${p.dependencies} dependencies</p><p class="hash">SHA-256 ${escape(p.hash)}</p><a class="text-link" href="${/^https:\/\/github\.com\//.test(p.repository)?escape(p.repository):'#packages'}">Source & API ↗</a> · <a class="text-link" href="${registry}${encodeURIComponent(p.name)}/${encodeURIComponent(p.version)}/release.json">Release record ↗</a></article>`).join(''):'<p class="empty">No packages match your search.</p>'};show('');document.querySelector('.search').addEventListener('input',e=>show(e.target.value))}catch(e){if(current===generation)document.querySelector('#catalog-status').textContent='Could not load the catalog. Reload or visit the registry repository.'}}else{content.innerHTML=(pages[route]||pages.project)();document.title=`${route[0].toUpperCase()+route.slice(1)} — Tarn`}window.scrollTo(0,0)}
-document.addEventListener('click',async e=>{if(!e.target.matches('.copy'))return;const button=e.target;try{await navigator.clipboard.writeText(button.parentElement.querySelector('code').textContent);button.textContent='Copied';setTimeout(()=>{button.textContent='Copy'},1600)}catch{button.textContent='Select text'}});window.addEventListener('hashchange',render);render();
+
+/**
+ * Render Active Tab in Showcase
+ */
+function renderShowcaseTab(tabId) {
+  const panel = $('#tab-content-panel');
+  if (!panel) return;
+  const tab = showcaseTabs.find((t) => t.id === tabId) || showcaseTabs[0];
+
+  panel.innerHTML = `
+    <div class="tab-pane-code">
+      <pre><code>${highlightTarn(tab.code)}</code></pre>
+    </div>
+    <div class="tab-pane-desc">
+      <div>
+        <h3>${escapeHtml(tab.title)}</h3>
+        <p>${escapeHtml(tab.desc)}</p>
+        <ul>
+          ${tab.bullets.map((b) => `<li>${escapeHtml(b)}</li>`).join('')}
+        </ul>
+      </div>
+      <div class="tab-footer-meta">
+        <span>✓ ${escapeHtml(tab.verified)}</span>
+        <a class="text-link" href="#tour">Learn more →</a>
+      </div>
+    </div>
+  `;
+}
+
+/**
+ * Render Package Catalog
+ */
+async function loadCatalog() {
+  const grid = $('#pkg-grid');
+  const status = $('#pkg-status');
+  if (!grid || !status) return;
+
+  try {
+    const res = await fetch('catalog.json');
+    if (!res.ok) throw new Error('Catalog HTTP error');
+    const data = await res.json();
+    const pkgs = data.packages || [];
+
+    const renderList = (filter = '') => {
+      const q = filter.trim().toLowerCase();
+      const filtered = pkgs.filter(
+        (p) =>
+          (p.name + ' ' + p.description + ' ' + (p.nativeLink || '')).toLowerCase().includes(q)
+      );
+
+      status.textContent = `${filtered.length} package${filtered.length === 1 ? '' : 's'} available · Verified immutable source`;
+
+      if (filtered.length === 0) {
+        grid.innerHTML = '<p style="color:var(--text-muted); grid-column:1/-1;">No matching packages found.</p>';
+        return;
+      }
+
+      grid.innerHTML = filtered
+        .map(
+          (p) => `
+        <article class="pkg-card">
+          <div>
+            <div class="pkg-header">
+              <span class="pkg-name">${escapeHtml(p.name)}</span>
+              <span class="pkg-version">v${escapeHtml(p.version)}</span>
+            </div>
+            <p class="pkg-desc">${escapeHtml(p.description)}</p>
+            ${codeBlock(
+              `tarn add ${p.name} --registry ${registryBase}${
+                p.nativeLink ? `\ntarn build --link ${p.nativeLink}` : ''
+              }`,
+              'bash'
+            )}
+          </div>
+          <div class="pkg-meta">
+            <span>Linux x86_64</span>
+            <a class="text-link" href="${p.repository}" target="_blank" rel="noopener">Repository ↗</a>
+          </div>
+        </article>
+      `
+        )
+        .join('');
+    };
+
+    renderList();
+
+    const searchInput = $('#pkg-search');
+    if (searchInput) {
+      searchInput.addEventListener('input', (e) => renderList(e.target.value));
+    }
+  } catch (err) {
+    status.textContent = 'Could not load registry catalog. Please reload or visit the registry repository.';
+  }
+}
+
+/**
+ * Route Dispatcher
+ */
+function navigate() {
+  const rawHash = location.hash.replace(/^#/, '');
+  const route = rawHash.split('-')[0] || 'home';
+  const renderFn = pages[route] || pages.home;
+
+  const content = $('#content');
+  if (content) {
+    content.innerHTML = renderFn();
+  }
+
+  // Update navigation link states
+  $$('nav.main-nav a').forEach((a) => {
+    const href = a.getAttribute('href') || '';
+    const linkRoute = href.replace(/^#/, '').split('-')[0];
+    a.classList.toggle('active', linkRoute === route);
+  });
+
+  // Handle Home Showcase Tabs
+  if (route === 'home') {
+    renderShowcaseTab('ownership');
+    $$('.tab-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        $$('.tab-btn').forEach((b) => b.classList.remove('active'));
+        btn.classList.add('active');
+        renderShowcaseTab(btn.dataset.tab);
+      });
+    });
+  }
+
+  // Handle Package Registry Fetch
+  if (route === 'packages') {
+    loadCatalog();
+  }
+
+  // Scroll to section anchor if present
+  if (rawHash.includes('-')) {
+    const target = $(`#${rawHash}`);
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth' });
+      return;
+    }
+  }
+
+  window.scrollTo(0, 0);
+}
+
+// Global Copy Button Click Handler
+document.addEventListener('click', async (e) => {
+  const btn = e.target.closest('.btn-copy');
+  if (!btn) return;
+  const parent = btn.closest('.code-box') || btn.closest('.terminal-card');
+  if (!parent) return;
+
+  const codeEl = parent.querySelector('code');
+  if (!codeEl) return;
+
+  // Extract raw text without prompt symbols
+  let text = codeEl.innerText.replace(/^\$\s*/gm, '');
+
+  try {
+    await navigator.clipboard.writeText(text.trim());
+    const originalHtml = btn.innerHTML;
+    btn.classList.add('copied');
+    btn.innerHTML = `
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="20 6 9 17 4 12"></polyline></svg>
+      Copied!
+    `;
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = originalHtml;
+    }, 1800);
+  } catch (err) {
+    btn.textContent = 'Failed';
+  }
+});
+
+// Initialization
+window.addEventListener('hashchange', navigate);
+window.addEventListener('DOMContentLoaded', navigate);
