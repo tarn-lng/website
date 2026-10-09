@@ -918,23 +918,39 @@ status := try child.wait()`)}
 
   packages: () => `
     <section class="hero-section" style="padding-bottom: 24px;">
-      <h1>Package Registry</h1>
-      <p class="hero-lead">
-        Immutable, source-only packages for Tarn. Package integrity is cryptographically verified via SHA-256 before building.
-      </p>
+      <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:16px;">
+        <div>
+          <h1 style="margin:0 0 10px;">Package Registry</h1>
+          <p class="hero-lead" style="margin:0;">
+            Immutable, source-only packages for Tarn. Verified by cryptographic SHA-256 integrity checks.
+          </p>
+        </div>
+        <a class="btn btn-secondary btn-sm" href="#publish" style="margin-top:6px;">+ Propose a Library</a>
+      </div>
 
       <div class="search-input-box">
-        <input class="search-input" id="pkg-search" type="search" placeholder="Search packages by name, description, or native dependency..." aria-label="Search packages">
+        <input class="search-input" id="pkg-search" type="search" placeholder="Search packages by name, description, or native library..." aria-label="Search packages">
       </div>
 
-      <div id="pkg-status" style="font-size:13px; color:var(--text-muted); margin-bottom:12px;">Loading packages…</div>
-      <div class="package-grid" id="pkg-grid"></div>
-
-      <div style="margin-top: 48px; padding: 24px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius-md);">
-        <h3>Want to share a library?</h3>
-        <p style="color:var(--text-muted); margin-bottom:14px;">Publishing is transparent and PR-driven. Check out our step-by-step contribution guide.</p>
-        <a class="btn btn-secondary btn-sm" href="#publish">Publishing Guide →</a>
+      <div class="registry-controls">
+        <div class="registry-filters" id="pkg-filters">
+          <button class="filter-btn active" type="button" data-filter="all">All Packages</button>
+          <button class="filter-btn" type="button" data-filter="native">Native C / FFI</button>
+          <button class="filter-btn" type="button" data-filter="pure">Pure Tarn</button>
+        </div>
+        <div class="registry-sort">
+          <label for="pkg-sort-select">Sort by:</label>
+          <select id="pkg-sort-select">
+            <option value="name-asc">Name (A–Z)</option>
+            <option value="name-desc">Name (Z–A)</option>
+            <option value="recent">Recently Published</option>
+          </select>
+        </div>
       </div>
+
+      <div id="pkg-status" style="font-size:13px; color:var(--text-muted); margin-bottom:10px;">Loading packages…</div>
+      <div class="package-list" id="pkg-list"></div>
+      <div id="pkg-pagination"></div>
     </section>
   `,
 
@@ -1338,68 +1354,194 @@ function renderShowcaseTab(tabId) {
 }
 
 /**
- * Render Package Catalog
+ * Render Package Catalog (Scalable dense list with search, filter, sort, pagination)
  */
 async function loadCatalog() {
-  const grid = $('#pkg-grid');
-  const status = $('#pkg-status');
-  if (!grid || !status) return;
+  const listEl = $('#pkg-list');
+  const statusEl = $('#pkg-status');
+  const paginationEl = $('#pkg-pagination');
+  if (!listEl || !statusEl) return;
 
   try {
     const res = await fetch('catalog.json');
     if (!res.ok) throw new Error('Catalog HTTP error');
     const data = await res.json();
-    const pkgs = data.packages || [];
+    const allPackages = data.packages || [];
 
-    const renderList = (filter = '') => {
-      const q = filter.trim().toLowerCase();
-      const filtered = pkgs.filter(
-        (p) =>
-          (p.name + ' ' + p.description + ' ' + (p.nativeLink || '')).toLowerCase().includes(q)
-      );
+    let currentQuery = '';
+    let currentFilter = 'all';
+    let currentSort = 'name-asc';
+    let currentPage = 1;
+    const pageSize = 15;
 
-      status.textContent = `${filtered.length} package${filtered.length === 1 ? '' : 's'} available · Verified immutable source`;
+    function updateView() {
+      // 1. Filter
+      let filtered = allPackages.filter((p) => {
+        const matchesQuery = (p.name + ' ' + p.description + ' ' + (p.nativeLink || '')).toLowerCase().includes(currentQuery);
+        if (!matchesQuery) return false;
+        if (currentFilter === 'native') return Boolean(p.nativeLink);
+        if (currentFilter === 'pure') return !p.nativeLink;
+        return true;
+      });
 
-      if (filtered.length === 0) {
-        grid.innerHTML = '<p style="color:var(--text-muted); grid-column:1/-1;">No matching packages found.</p>';
+      // 2. Sort
+      filtered.sort((a, b) => {
+        if (currentSort === 'name-asc') return a.name.localeCompare(b.name);
+        if (currentSort === 'name-desc') return b.name.localeCompare(a.name);
+        if (currentSort === 'recent') return (b.published || 0) - (a.published || 0);
+        return 0;
+      });
+
+      const totalItems = filtered.length;
+      const totalPages = Math.ceil(totalItems / pageSize) || 1;
+      if (currentPage > totalPages) currentPage = totalPages;
+      if (currentPage < 1) currentPage = 1;
+
+      // 3. Slice for pagination
+      const startIndex = (currentPage - 1) * pageSize;
+      const pageItems = filtered.slice(startIndex, startIndex + pageSize);
+
+      // Status text
+      if (totalItems === 0) {
+        statusEl.textContent = '0 packages found matching your criteria.';
+        listEl.innerHTML = '<p style="color:var(--text-muted); padding:24px 0; text-align:center;">No matching packages found.</p>';
+        paginationEl.innerHTML = '';
         return;
       }
 
-      grid.innerHTML = filtered
-        .map(
-          (p) => `
-        <article class="pkg-card">
-          <div>
-            <div class="pkg-header">
-              <span class="pkg-name">${escapeHtml(p.name)}</span>
-              <span class="pkg-version">v${escapeHtml(p.version)}</span>
+      const endDisplay = Math.min(startIndex + pageSize, totalItems);
+      statusEl.textContent = `Showing ${startIndex + 1}–${endDisplay} of ${totalItems} package${totalItems === 1 ? '' : 's'} · Verified immutable source`;
+
+      // Render Rows
+      listEl.innerHTML = pageItems.map((p) => {
+        const hashDisplay = p.hash && p.hash.length > 16 ? `${p.hash.slice(0, 8)}…${p.hash.slice(-8)}` : (p.hash || '');
+        return `
+          <article class="pkg-row" data-pkg="${escapeHtml(p.name)}">
+            <div class="pkg-row-top">
+              <div class="pkg-title-group">
+                <a class="pkg-name-link" href="${p.repository || '#packages'}" target="_blank" rel="noopener">${escapeHtml(p.name)}</a>
+                <span class="pkg-badge">v${escapeHtml(p.version)}</span>
+                <span class="pkg-badge status">${escapeHtml(p.status || 'stable')}</span>
+                ${p.nativeLink ? `<span class="pkg-badge native" title="Requires native C library --link ${escapeHtml(p.nativeLink)}">lib: ${escapeHtml(p.nativeLink)}</span>` : ''}
+              </div>
+              <div class="pkg-quick-copy">
+                <code>tarn add ${escapeHtml(p.name)}</code>
+                <button class="btn-copy" type="button" aria-label="Copy install command" style="padding:2px 6px;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  Copy
+                </button>
+              </div>
             </div>
             <p class="pkg-desc">${escapeHtml(p.description)}</p>
-            ${codeBlock(
-              `tarn add ${p.name} --registry ${registryBase}${
-                p.nativeLink ? `\ntarn build --link ${p.nativeLink}` : ''
-              }`,
-              'bash'
-            )}
-          </div>
-          <div class="pkg-meta">
-            <span>Linux x86_64</span>
-            <a class="text-link" href="${p.repository}" target="_blank" rel="noopener">Repository ↗</a>
-          </div>
-        </article>
-      `
-        )
-        .join('');
-    };
+            <div class="pkg-meta-row">
+              <div class="pkg-meta-items">
+                <span>Linux x86_64</span>
+                <span>${p.dependencies || 0} dependencies</span>
+                <span title="${escapeHtml(p.hash)}">SHA-256: <code>${hashDisplay}</code></span>
+              </div>
+              <div style="display:flex; align-items:center; gap:12px;">
+                <a class="text-link" href="${p.repository}" target="_blank" rel="noopener">Source ↗</a>
+                <button class="pkg-details-toggle" type="button">▾ Details</button>
+              </div>
+            </div>
+            <div class="pkg-expanded-drawer">
+              <p style="font-size:13px; color:var(--text-muted); margin:0 0 8px;">Manifest dependency &amp; native build command:</p>
+              ${codeBlock(`tarn add ${p.name} --registry ${registryBase}${p.nativeLink ? `\ntarn build --link ${p.nativeLink}` : ''}`, 'bash')}
+              <div style="font-size:12px; color:var(--text-dim); margin-top:8px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
+                <span>Full SHA-256: <code>${escapeHtml(p.hash)}</code></span>
+                <a class="text-link" href="${registryBase}${encodeURIComponent(p.name)}/${encodeURIComponent(p.version)}/release.json" target="_blank">release.json ↗</a>
+              </div>
+            </div>
+          </article>
+        `;
+      }).join('');
 
-    renderList();
+      // Attach details drawer toggle listeners
+      listEl.querySelectorAll('.pkg-details-toggle').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          const row = btn.closest('.pkg-row');
+          const drawer = row.querySelector('.pkg-expanded-drawer');
+          if (!drawer) return;
+          const isOpen = drawer.classList.toggle('open');
+          btn.textContent = isOpen ? '▴ Less' : '▾ Details';
+        });
+      });
 
+      // Render Pagination Controls
+      if (totalPages > 1) {
+        let pagesHtml = `
+          <div class="pagination-bar">
+            <span>Page ${currentPage} of ${totalPages}</span>
+            <div class="pagination-pages">
+              <button class="page-btn" type="button" data-goto="${currentPage - 1}" ${currentPage <= 1 ? 'disabled' : ''}>« Prev</button>
+        `;
+
+        for (let i = 1; i <= totalPages; i++) {
+          if (totalPages > 7 && Math.abs(i - currentPage) > 2 && i !== 1 && i !== totalPages) {
+            if (i === 2 || i === totalPages - 1) pagesHtml += '<span style="color:var(--text-dim);">…</span>';
+            continue;
+          }
+          pagesHtml += `<button class="page-btn ${i === currentPage ? 'active' : ''}" type="button" data-goto="${i}">${i}</button>`;
+        }
+
+        pagesHtml += `
+              <button class="page-btn" type="button" data-goto="${currentPage + 1}" ${currentPage >= totalPages ? 'disabled' : ''}>Next »</button>
+            </div>
+          </div>
+        `;
+        paginationEl.innerHTML = pagesHtml;
+
+        paginationEl.querySelectorAll('.page-btn').forEach((btn) => {
+          btn.addEventListener('click', () => {
+            const targetPage = parseInt(btn.dataset.goto, 10);
+            if (!isNaN(targetPage) && targetPage >= 1 && targetPage <= totalPages) {
+              currentPage = targetPage;
+              updateView();
+              window.scrollTo({ top: listEl.offsetTop - 80, behavior: 'smooth' });
+            }
+          });
+        });
+      } else {
+        paginationEl.innerHTML = '';
+      }
+    }
+
+    // Event Listeners for Controls
     const searchInput = $('#pkg-search');
     if (searchInput) {
-      searchInput.addEventListener('input', (e) => renderList(e.target.value));
+      searchInput.addEventListener('input', (e) => {
+        currentQuery = e.target.value.trim().toLowerCase();
+        currentPage = 1;
+        updateView();
+      });
     }
+
+    const filterContainer = $('#pkg-filters');
+    if (filterContainer) {
+      filterContainer.querySelectorAll('.filter-btn').forEach((btn) => {
+        btn.addEventListener('click', () => {
+          filterContainer.querySelectorAll('.filter-btn').forEach((b) => b.classList.remove('active'));
+          btn.classList.add('active');
+          currentFilter = btn.dataset.filter;
+          currentPage = 1;
+          updateView();
+        });
+      });
+    }
+
+    const sortSelect = $('#pkg-sort-select');
+    if (sortSelect) {
+      sortSelect.addEventListener('change', (e) => {
+        currentSort = e.target.value;
+        currentPage = 1;
+        updateView();
+      });
+    }
+
+    // Initial render
+    updateView();
   } catch (err) {
-    status.textContent = 'Could not load registry catalog. Please reload or visit the registry repository.';
+    statusEl.textContent = 'Could not load registry catalog. Please reload or visit the registry repository.';
   }
 }
 
