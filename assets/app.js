@@ -1209,6 +1209,103 @@ cargo build --release -p tarn -p tarn-lsp
         </section>
       </main>
     </div>
+  `,
+
+  llms: () => `
+    <div class="doc-layout">
+      <aside class="doc-sidebar">
+        <div class="sidebar-title">For LLMs &amp; Agents</div>
+        <nav class="sidebar-nav">
+          <a class="sidebar-link active" href="#llm-overview">Overview</a>
+          <a class="sidebar-link" href="#llm-endpoints">llms.txt Endpoints</a>
+          <a class="sidebar-link" href="#llm-prompt">System Prompt</a>
+          <a class="sidebar-link" href="#llm-compiler">Compiler Introspection</a>
+          <a class="sidebar-link" href="#llm-rules">Rules &amp; Pitfalls</a>
+        </nav>
+      </aside>
+
+      <main class="doc-main">
+        <h1>Tarn for AI Coding Agents</h1>
+        <p class="doc-lead">Tarn is designed from day one with first-class support for autonomous coding agents, LLMs, and AI pair-programming.</p>
+
+        <section class="doc-section" id="llm-overview">
+          <h2>Why Tarn for AI Pair-Programming?</h2>
+          <p>Traditional systems languages (like Rust or C++) present steep friction for coding agents due to lifetime annotation puzzles, macro complexity, or implicit conversions. Tarn solves this by design:</p>
+          <ul>
+            <li><strong>Inferred Lifetimes:</strong> Zero explicit lifetime syntax (no <code>'a</code>). LLMs never hallucinate broken lifetime parameters.</li>
+            <li><strong>Regular, Predictable Grammar:</strong> No semicolons, explicit <code>return</code>, prefix <code>try</code>, and explicit types.</li>
+            <li><strong>Machine-Readable Facts:</strong> <code>tarn check --json</code> provides structured diagnostics with precise line, column, error code, and actionable fixes.</li>
+            <li><strong>Zero Guesswork on APIs:</strong> <code>tarn stdlib --json</code> emits embedded signatures directly from the compiler binary.</li>
+          </ul>
+        </section>
+
+        <section class="doc-section" id="llm-endpoints">
+          <h2>Standard llms.txt Endpoints</h2>
+          <p>Tarn serves the official <a class="text-link" href="https://llmstxt.org" target="_blank" rel="noopener">llms.txt</a> standard files for AI assistants and context windows:</p>
+          <div class="table-container">
+            <table class="data-table">
+              <thead><tr><th>Endpoint</th><th>Purpose</th><th>Link</th></tr></thead>
+              <tbody>
+                <tr>
+                  <td><code>/llms.txt</code></td>
+                  <td>Concise language rules, syntax cheatsheet, and documentation links</td>
+                  <td><a class="text-link" href="llms.txt" target="_blank">llms.txt ↗</a></td>
+                </tr>
+                <tr>
+                  <td><code>/llms-full.txt</code></td>
+                  <td>Complete, dense specification and standard library API catalog</td>
+                  <td><a class="text-link" href="llms-full.txt" target="_blank">llms-full.txt ↗</a></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="doc-section" id="llm-prompt">
+          <h2>Copyable System Prompt for Coding Agents</h2>
+          <p>Paste this preamble into Cursor, Claude Code, ChatGPT, Windsurf, or GitHub Copilot when generating Tarn code:</p>
+          ${codeBlock(`You are an expert programming assistant working with the Tarn programming language (v0.0.1, Linux x86_64).
+Always follow these strict Tarn rules:
+1. No semicolons: Statements end with line breaks.
+2. Explicit return: Functions require an explicit 'return'. Blocks, 'if', and 'match' are statements, not expressions.
+3. Bindings: Immutable 'x := val', mutable 'var x: Type = val'.
+4. Parameters: Types follow names directly without colons: 'fn add(a i32, b i32) i32'.
+5. Inherent methods: Declared directly on the type: 'fn User.greet(&self)'. Never use 'impl User { ... }' for inherent methods.
+6. Interfaces: Nominal implementation with 'impl Interface for Type'. Dynamic dispatch uses '&any Interface'.
+7. Ownership: Non-Copy types move on assignment and call. Lifetimes are inferred by the compiler (never write ''a').
+8. Errors: Uses Result<T, E> and Option<T>. Prefix 'try' propagates errors (e.g. 'v := try op()'). Never use '?'.
+9. Loops: Only use 'for' ('for i in 0..10', 'for cond', 'for { break }').
+10. Slices: Arrays '[N]T', borrowed slices '&[]T'.
+11. No compound assignment: Operators like += or -= do not exist in v0; use 'x = x + 1'.
+12. Introspection: Always verify code with 'tarn check <file> --json' and discover APIs with 'tarn stdlib [module] --json'.`, 'markdown', 'System Prompt for LLMs')}
+        </section>
+
+        <section class="doc-section" id="llm-compiler">
+          <h2>Compiler Introspection for Agents</h2>
+          <p>Agents should consume compiler facts instead of guessing:</p>
+          ${codeBlock(`$ tarn stdlib collections --json
+$ tarn check src/main.tarn --json`, 'bash')}
+          <p>Exit code <code>0</code> indicates success. Non-zero exit with structured JSON allows agents to pinpoint errors and apply targeted fixes.</p>
+        </section>
+
+        <section class="doc-section" id="llm-rules">
+          <h2>Common LLM Hallucinations &amp; Corrections</h2>
+          <div class="table-container">
+            <table class="data-table">
+              <thead><tr><th>Common Hallucination</th><th>Tarn Requirement</th><th>Correct Example</th></tr></thead>
+              <tbody>
+                <tr><td>Postfix <code>?</code> operator</td><td>Prefix <code>try</code> operator</td><td><code>val := try file.read_all()</code></td></tr>
+                <tr><td><code>impl Struct { ... }</code></td><td>Inherent method declaration</td><td><code>fn Struct.method(&self)</code></td></tr>
+                <tr><td>Explicit lifetimes (<code>'a</code>)</td><td>Inferred provenance</td><td><code>fn pick(a &Item, b &Item) &Item</code></td></tr>
+                <tr><td>Compound <code>+=</code>, <code>-=</code></td><td>Explicit assignment</td><td><code>x = x + 1</code></td></tr>
+                <tr><td>Semicolons <code>;</code></td><td>Line breaks</td><td>Newline separated statements</td></tr>
+                <tr><td>Implicit numeric coercion</td><td>Explicit conversion</td><td><code>usize(count)</code> or <code>i64(num)</code></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+      </main>
+    </div>
   `
 };
 

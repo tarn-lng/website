@@ -1,0 +1,153 @@
+# Tarn Programming Language — Complete LLM Reference Specification
+
+Version: 0.0.1
+Platform: Linux x86_64
+Compiler: Cranelift backend emitting native ELF executables
+Standard Library: 17 embedded modules in compiler binary
+
+## 1. Syntax & Declaration Rules
+
+### Bindings
+- Immutable: `x := 42` or `limit: u64 := 100`
+- Mutable: `var counter := 0` or `var total: i64 = 0`
+- Uninitialized mutable: `var x: Type`
+- There are NO uninitialized immutable bindings.
+- Semicolons do not exist; statement boundaries are newline-sensitive.
+- Binary operators must remain on the previous line when continuing expressions.
+
+### Types
+- Signed integers: `i8`, `i16`, `i32`, `i64`, `isize`
+- Unsigned integers: `u8`, `u16`, `u32`, `u64`, `usize`
+- Floating point: `f32`, `f64`
+- Booleans: `bool` (`true`, `false`)
+- Text: `string` (UTF-8, indexing and slicing operate on byte offsets)
+- Unit / Return: `void`
+- Diverging: `never`
+- Fixed arrays: `[N]T`, e.g. `[4]i32{1, 2, 3, 4}`
+- Slices: `[]T`, always borrowed as `&[]T` or `&mut []T`
+- Sum types: `Option<T>` (`Some(val)`, `None`), `Result<T, E>` (`Ok(val)`, `Err(err)`)
+
+### Functions
+- Parameter list: types follow names directly without colons:
+  `fn add(a i32, b i32) i32 { return a + b }`
+- Return statements are always explicit. Blocks do not yield values.
+- Inherent methods:
+  `fn Point.dist(&self) f64 { return (self.x * self.x + self.y * self.y) }`
+  Do NOT wrap inherent methods in `impl Point { ... }` blocks.
+- Generic methods:
+  `fn Pair<A, B>.swap(self) Pair<B, A> { return Pair{first: self.second, second: self.first} }`
+
+### Structs & Enums
+- Struct definition:
+  ```tarn
+  struct User {
+      name string
+      age  u32
+  }
+  ```
+- Enum definition:
+  ```tarn
+  copy enum Shape {
+      Circle(f64)
+      Rect(f64, f64)
+      Empty
+  }
+  ```
+- Pattern matching:
+  ```tarn
+  match s {
+      Circle(r) => return 3.14159 * r * r
+      Rect(w, h) => return w * h
+      Empty => return 0.0
+  }
+  ```
+
+### Interfaces & Impls
+- Interfaces are nominal:
+  ```tarn
+  interface Writer {
+      fn write(&mut self, data &[]u8) Result<usize, io.Error>
+  }
+  ```
+- Implementation:
+  ```tarn
+  impl Writer for File {
+      fn write(&mut self, data &[]u8) Result<usize, io.Error> {
+          // ...
+      }
+  }
+  ```
+- Monomorphized static dispatch: `fn output<W: Writer>(w &mut W)`
+- Dynamic dispatch via vtable: `fn output(w &mut any Writer)`
+
+## 2. Ownership, Borrowing & Lifetimes
+
+- **Single Owner:** Non-`Copy` values move on assignment and function arguments.
+- **Move Paths:** Tracked on struct fields; partial moves are tracked by the compiler.
+- **Borrowing Aliasing Rule:**
+  - Multiple shared borrows `&T` allowed simultaneously.
+  - Exactly one exclusive mutable borrow `&mut T` allowed at a time.
+- **Inferred Lifetimes:**
+  - Lifetimes are NOT written in source code (no `'a`).
+  - Function body analysis infers return loan provenance.
+- **Aggregate Restrictions:**
+  - Storing references (`&T` or `&mut T`) inside struct or enum fields is strictly FORBIDDEN in v0.
+- **Custom Destructors:**
+  - User-defined `Drop` does not exist in v0. Resources (files, sockets, tasks) rely on compiler-verified drop elaboration.
+
+## 3. Error Handling
+
+- Recoverable errors return `Result<T, E>`.
+- The prefix `try` operator unwraps the `Ok` value or returns early with `Err`:
+  ```tarn
+  file := try fs.open("data.txt")
+  text := try file.read_all()
+  ```
+- There is NO `?` postfix operator.
+- No implicit error conversions. Use explicit mapping: `res.map_err(mapper)`.
+
+## 4. Concurrency & Async
+
+- **Native Tasks:**
+  ```tarn
+  task := spawn move fn() i32 { return 42 }
+  result := try task.join()
+  ```
+- **Async Execution:**
+  ```tarn
+  async fn echo(stream &mut net.TcpStream) Result<usize, io.Error> {
+      count := try await stream.read_async(&mut buffer)
+      try await stream.write_all_async(&buffer[0..count])
+      return Ok(count)
+  }
+  ```
+
+## 5. Standard Library Modules
+
+1. `core`: `Option`, `Result`, traits `Hash`, `Eq`, `Copy`, abort routines.
+2. `io`: `Reader`, `Writer`, `Stream`, `Error`, `ErrorKind`.
+3. `fs`: `read_text`, `write_text`, `open`, `File`.
+4. `net`: `TcpListener`, `TcpStream`, `UdpSocket`.
+5. `http`: HTTP/1.1 client, server, request and response models.
+6. `https`: Bounded TLS HTTPS client.
+7. `json`: Strict RFC 8259 parser (`json.parse`) and streaming encoder (`json.encode`).
+8. `csv`: Streaming CSV reader and tabular parser.
+9. `collections`: `Map<K, V>`, `Vector<T>`, `Set<T>`.
+10. `string`: UTF-8 operations, integer parsing, slicing, trimming.
+11. `time`: Monotonic `Instant`, `Duration`, `sleep`.
+12. `os`: Command-line arguments (`os.args()`), environment variables, exit.
+13. `process`: Subprocess execution, piped I/O, exit status.
+14. `path`: Path manipulation and resolution.
+15. `console`: Standard streams (`stdin`, `stdout`, `stderr`), `print`.
+16. `runtime`: Cooperative task executor and readiness wakers.
+17. `ffi`: C ABI interoperability and raw pointers.
+
+## 6. Compiler CLI Commands
+
+- `tarn check <entry> --json`: Type and borrow checking with machine-readable diagnostics.
+- `tarn run <entry>`: Compile temporarily and execute.
+- `tarn build <entry> [-o binary] [--link c_lib]`: Emit standalone native executable.
+- `tarn test [--filter name]`: Run test functions.
+- `tarn fmt <file>`: Format source code recursively.
+- `tarn stdlib [module] --json`: Inspect embedded standard library signatures.
+- `tarn add <package>`: Add dependency to `tarn.toml` and lock in `tarn.lock`.

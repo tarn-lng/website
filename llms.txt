@@ -1,0 +1,50 @@
+# Tarn Programming Language
+
+> Tarn is a statically typed systems programming language with compile-time ownership, inferred lifetimes, native Linux x86_64 machine code generation via Cranelift, and zero mandatory garbage collection. It is designed with first-class support for humans and AI coding agents.
+
+## Core Language Rules for LLMs
+
+- **File extension:** `.tarn`
+- **Platform target:** Linux x86_64
+- **No semicolons:** Statements are separated by line breaks.
+- **Explicit return:** `return` is always required to produce a function value. Blocks, `if`, and `match` are statements, not expressions.
+- **Variable bindings:**
+  - Immutable: `x := 42` or `limit: u64 := 100`
+  - Mutable: `var counter := 0` or `var total: i64 = 0`
+- **Function declarations:**
+  - In parameter lists, types follow the name directly without colons: `fn add(a i32, b i32) i32 { return a + b }`
+  - Inherent methods are declared directly on their type: `fn User.greet(&self) { print(self.name) }`. Do NOT use `impl User { ... }` blocks for inherent methods!
+- **Interfaces & Dispatch:**
+  - Interfaces are nominal: `interface Shape { fn area(&self) f64 }`
+  - Implementation: `impl Shape for Square { fn area(&self) f64 { return self.side * self.side } }`
+  - Static dispatch: `fn print_area<S: Shape>(s &S)`
+  - Dynamic dispatch: `fn print_area(s &any Shape)`
+- **Ownership & Lifetimes:**
+  - Non-`Copy` types transfer ownership (move) on assignment and function call.
+  - Shared borrow: `&value` (read-only, multiple permitted).
+  - Mutable borrow: `&mut value` (exclusive, no aliasing).
+  - Lifetimes are **inferred**: do NOT write Rust-style `'a` lifetime annotations in source code.
+  - References cannot be stored inside struct or enum fields in v0.
+- **Error handling:**
+  - Uses `Result<T, E>` and `Option<T>` in the prelude.
+  - Error propagation uses prefix `try`: `data := try fs.read_text(path)`. Do NOT use `?` syntax!
+- **Control flow:**
+  - Loops only use `for`: range `for i in 0..10`, condition `for cond`, infinite `for { break }`.
+  - Pattern matching uses `match value { Pattern => statement }` with usefulness / exhaustiveness checking.
+- **No compound operators:** Operators like `+=`, `-=`, `*=` do not exist in v0; write `x = x + 1`.
+
+## Toolchain & Verification
+
+Always verify Tarn code using the compiler:
+- `tarn check <entry> --json`: Reports machine-readable parse, type, and borrow diagnostics with line/column and actionable help messages.
+- `tarn stdlib [module] --json`: Discovers exact embedded standard library signatures and documentation.
+- `tarn run <entry>`: Compiles temporarily and executes native machine code.
+- `tarn fmt <file>`: Formats source code files.
+
+## Documentation Links
+
+- [Full Reference for LLMs](https://tarn-lng.github.io/website/llms-full.txt): Complete, dense specification and API catalog.
+- [Language Specification](https://github.com/tarn-lng/tarn/blob/main/docs/language.md): Established syntax and type rules.
+- [Ownership & Borrowing](https://github.com/tarn-lng/tarn/blob/main/docs/ownership.md): Memory model and move semantics.
+- [Standard Library Guide](https://tarn-lng.github.io/website/#stdlib): All 17 embedded standard library modules.
+- [Agent Guide](https://github.com/tarn-lng/tarn/blob/main/docs/llm-guide.md): Common pitfalls and corrections for AI coding assistants.
