@@ -28,7 +28,7 @@ jobs:
       - name: Stage public website files
         run: |
           mkdir -p build/site
-          cp index.html catalog.json build/site/
+          cp index.html catalog.json install.sh build/site/
           cp -R assets build/site/
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3

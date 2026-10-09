@@ -9,8 +9,9 @@ The package catalog is produced by the independent registry's Tarn validator.
 Deployment fetches its generated catalog from the public registry; package
 installation continues to use https://tarn-lng.github.io/registry/.
 
-There are no downloadable compiler releases at launch. Installation is from
-source. Do not invent download links, mature-platform claims or unimplemented
+Linux x86_64 prereleases are built with GitHub Actions. install.sh is copied
+from the compiler repository tools/release/install.sh; keep both in sync.
+Installation verifies release checksums. Source installation remains available. Do not invent download links, mature-platform claims or unimplemented
 commands. Canonical detailed documentation stays in the compiler repository.
 
 GitHub Pages deployment runs only on main or manual dispatch. To refresh package
