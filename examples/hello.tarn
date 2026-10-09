@@ -1,0 +1,9 @@
+import "console"
+import "os"
+fn main() {
+    var out = console.stdout()
+    match out.write_text("Hello from Tarn\n") {
+        Ok(_) => {}
+        Err(_) => { os.exit(1) }
+    }
+}

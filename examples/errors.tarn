@@ -1,0 +1,9 @@
+import "fs"
+import "io"
+fn load_config() Result<string, io.Error> { return fs.read_text("config.txt") }
+fn main() {
+    match load_config() {
+        Ok(text) => { print(text) }
+        Err(_) => { print("Cannot read config.txt") }
+    }
+}

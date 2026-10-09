@@ -1,0 +1,6 @@
+fn show(value &string) { print(value) }
+fn main() {
+    name := "Tarn"
+    show(&name)
+    print(name)
+}
