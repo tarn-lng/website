@@ -1354,6 +1354,333 @@ function renderShowcaseTab(tabId) {
 }
 
 /**
+ * Markdown Renderer for Package READMEs
+ */
+function renderMarkdown(md) {
+  if (!md) return '';
+  let text = md.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+  // Extract code blocks
+  const codeBlocks = [];
+  text = text.replace(/```([a-zA-Z0-9_\-\.\+]*)\n([\s\S]*?)```/g, (match, lang, code) => {
+    const id = `__CODE_BLOCK_${codeBlocks.length}__`;
+    codeBlocks.push({ lang: (lang || 'tarn').trim().toLowerCase(), code: code.replace(/\n$/, '') });
+    return id;
+  });
+
+  const lines = text.split('\n');
+  const out = [];
+  let inList = null;
+  let inTable = false;
+  let tableHeader = [];
+  let tableRows = [];
+
+  function closeList() {
+    if (inList) {
+      out.push(inList === 'ul' ? '</ul>' : '</ol>');
+      inList = null;
+    }
+  }
+
+  function closeTable() {
+    if (inTable || tableHeader.length > 0) {
+      let html = '<div class="table-wrap"><table class="doc-table">';
+      if (tableHeader.length) {
+        html += '<thead><tr>' + tableHeader.map(c => `<th>${inline(c)}</th>`).join('') + '</tr></thead>';
+      }
+      if (tableRows.length) {
+        html += '<tbody>' + tableRows.map(row => '<tr>' + row.map(c => `<td>${inline(c)}</td>`).join('') + '</tr>').join('') + '</tbody>';
+      }
+      html += '</table></div>';
+      out.push(html);
+      inTable = false;
+      tableHeader = [];
+      tableRows = [];
+    }
+  }
+
+  function inline(s) {
+    s = escapeHtml(s);
+    s = s.replace(/`([^`]+)`/g, '<code>$1</code>');
+    s = s.replace(/!\[([^\]]*)\]\(([^)]+)\)/g, '<img src="$2" alt="$1" style="max-width:100%">');
+    s = s.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a class="text-link" href="$2" target="_blank" rel="noopener">$1 ↗</a>');
+    s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+    s = s.replace(/__([^_]+)__/g, '<strong>$1</strong>');
+    s = s.replace(/(^|[^\*])\*([^*]+)\*([^\*]|$)/g, '$1<em>$2</em>$3');
+    s = s.replace(/(^|[^_])_([^_]+)_([^_]|$)/g, '$1<em>$2</em>$3');
+    return s;
+  }
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+
+    const cbMatch = line.trim().match(/^__CODE_BLOCK_(\d+)__$/);
+    if (cbMatch) {
+      closeList();
+      closeTable();
+      const cb = codeBlocks[parseInt(cbMatch[1], 10)];
+      out.push(codeBlock(cb.code, cb.lang));
+      continue;
+    }
+
+    if (/^(\-{3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+      closeList();
+      closeTable();
+      out.push('<hr class="readme-hr">');
+      continue;
+    }
+
+    if (line.trim().startsWith('|') && line.trim().endsWith('|')) {
+      closeList();
+      const cells = line.trim().slice(1, -1).split('|').map(c => c.trim());
+      if (cells.every(c => /^:?-+:?$/.test(c))) {
+        inTable = true;
+        continue;
+      }
+      if (!inTable) {
+        tableHeader = cells;
+      } else {
+        tableRows.push(cells);
+      }
+      continue;
+    } else {
+      closeTable();
+    }
+
+    const hMatch = line.match(/^(#{1,6})\s+(.*)$/);
+    if (hMatch) {
+      closeList();
+      const level = hMatch[1].length;
+      out.push(`<h${level}>${inline(hMatch[2])}</h${level}>`);
+      continue;
+    }
+
+    if (line.startsWith('>')) {
+      closeList();
+      out.push(`<blockquote>${inline(line.replace(/^>\s?/, ''))}</blockquote>`);
+      continue;
+    }
+
+    const ulMatch = line.match(/^(\s*)[-\*]\s+(.*)$/);
+    if (ulMatch) {
+      if (inList !== 'ul') {
+        closeList();
+        out.push('<ul>');
+        inList = 'ul';
+      }
+      out.push(`<li>${inline(ulMatch[2])}</li>`);
+      continue;
+    }
+
+    const olMatch = line.match(/^(\s*)\d+\.\s+(.*)$/);
+    if (olMatch) {
+      if (inList !== 'ol') {
+        closeList();
+        out.push('<ol>');
+        inList = 'ol';
+      }
+      out.push(`<li>${inline(olMatch[2])}</li>`);
+      continue;
+    }
+
+    if (!line.trim()) {
+      closeList();
+      continue;
+    }
+
+    closeList();
+    out.push(`<p>${inline(line)}</p>`);
+  }
+
+  closeList();
+  closeTable();
+
+  return out.join('\n');
+}
+
+/**
+ * Render Dedicated Package Detail Page with README.md
+ */
+async function renderPackagePage(pkgName, requestedVer) {
+  const content = $('#content');
+  if (!content) return;
+
+  content.innerHTML = `
+    <div style="max-width:var(--max-width); margin:0 auto; padding:40px 24px;">
+      <a class="text-link" href="#packages" style="margin-bottom:24px; display:inline-flex; align-items:center; gap:6px;">
+        ← Back to Packages
+      </a>
+      <div style="text-align:center; padding:60px 0; color:var(--text-muted);">
+        <div class="spinner" style="margin:0 auto 16px;"></div>
+        <p>Loading package details for <code>${escapeHtml(pkgName)}</code>…</p>
+      </div>
+    </div>
+  `;
+
+  try {
+    const res = await fetch('catalog.json');
+    if (!res.ok) throw new Error('Catalog HTTP error');
+    const data = await res.json();
+    const all = data.packages || [];
+    const matching = all.filter((p) => p.name.toLowerCase() === pkgName.toLowerCase());
+
+    if (!matching.length) {
+      content.innerHTML = `
+        <div style="max-width:var(--max-width); margin:0 auto; padding:40px 24px;">
+          <a class="text-link" href="#packages" style="margin-bottom:24px; display:inline-flex;">← Back to Packages</a>
+          <h1 style="margin:20px 0 10px;">Package not found: <code>${escapeHtml(pkgName)}</code></h1>
+          <p style="color:var(--text-muted);">This package is not present in the current Tarn package registry.</p>
+          <a class="btn btn-secondary btn-sm" href="#packages" style="margin-top:16px;">Browse All Packages</a>
+        </div>
+      `;
+      return;
+    }
+
+    // Sort newest first
+    const sorted = matching.slice().reverse();
+    const selected = requestedVer ? (sorted.find(r => r.version === requestedVer) || sorted[0]) : sorted[0];
+    const latestVersion = sorted[0].version;
+
+    document.title = `${selected.name} v${selected.version} — Tarn Package Registry`;
+
+    content.innerHTML = `
+      <div style="max-width:var(--max-width); margin:0 auto; padding:40px 24px;">
+        <div style="margin-bottom:28px;">
+          <a class="text-link" href="#packages" style="display:inline-flex; align-items:center; gap:6px; font-size:14px; margin-bottom:18px;">
+            ← Back to all packages
+          </a>
+          <div class="pkg-header-layout">
+            <div>
+              <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:10px;">
+                <span class="pkg-badge status">${escapeHtml(selected.status || 'experimental')}</span>
+                <span class="pkg-badge">v${escapeHtml(selected.version)}</span>
+                ${selected.version === latestVersion ? '<span class="pkg-badge" style="color:var(--color-green); border-color:rgba(101,197,156,0.35); background:rgba(101,197,156,0.08);">latest</span>' : ''}
+                <span class="pkg-badge">Linux x86_64</span>
+                ${selected.nativeLink ? `<span class="pkg-badge native">lib: ${escapeHtml(selected.nativeLink)}</span>` : ''}
+              </div>
+              <h1 style="font-size:38px; font-weight:800; margin:0 0 12px; letter-spacing:-0.5px;">${escapeHtml(selected.name)}</h1>
+              <p style="font-size:17px; color:var(--text-muted); max-width:820px; margin:0; line-height:1.5;">${escapeHtml(selected.description)}</p>
+            </div>
+            <div class="pkg-ver-picker">
+              <label for="pkg-ver-select" style="font-size:12px; color:var(--text-muted); font-family:var(--font-mono); display:block; margin-bottom:6px;">Version:</label>
+              <select id="pkg-ver-select" class="pkg-select-styled">
+                ${sorted.map(r => `<option value="${escapeHtml(r.version)}" ${r.version === selected.version ? 'selected' : ''}>v${escapeHtml(r.version)} ${r.version === latestVersion ? '(latest)' : ''}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="pkg-detail-grid">
+          <div class="pkg-main-column">
+            <div class="readme-card">
+              <div class="readme-header">
+                <div style="display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; font-family:var(--font-mono);">
+                  <span>📄</span>
+                  <span>README.md</span>
+                  <span class="pkg-badge" style="padding:1px 5px; font-size:10px;">v${escapeHtml(selected.version)}</span>
+                </div>
+                <a class="text-link" href="${registryBase}${encodeURIComponent(selected.name)}/${encodeURIComponent(selected.version)}/files/README.md" target="_blank" rel="noopener" style="font-size:12px;">Raw ↗</a>
+              </div>
+              <div id="pkg-readme-content" class="readme-prose">
+                <div style="text-align:center; padding:60px 0; color:var(--text-muted);">
+                  <div class="spinner" style="margin:0 auto 16px;"></div>
+                  <p>Loading README.md…</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <aside class="pkg-sidebar-column">
+            <div class="pkg-sidebar-card">
+              <div class="sidebar-heading">Install</div>
+              ${codeBlock(`tarn add ${selected.name} --registry ${registryBase}${selected.nativeLink ? `\ntarn build --link ${selected.nativeLink}` : ''}`, 'bash')}
+            </div>
+
+            <div class="pkg-sidebar-card">
+              <div class="sidebar-heading">Repository</div>
+              <a class="text-link" href="${escapeHtml(selected.repository)}" target="_blank" rel="noopener" style="font-size:14px; word-break:break-all;">
+                ${escapeHtml(selected.repository ? selected.repository.replace('https://github.com/', '') : 'Source repository')} ↗
+              </a>
+            </div>
+
+            <div class="pkg-sidebar-card">
+              <div class="sidebar-heading">Metadata</div>
+              <ul class="meta-list">
+                <li><span>Version</span><strong>v${escapeHtml(selected.version)}</strong></li>
+                <li><span>Dependencies</span><strong>${selected.dependencies || 0} direct</strong></li>
+                <li><span>Platform</span><strong>Linux x86_64</strong></li>
+                ${selected.nativeLink ? `<li><span>Native Link</span><strong><code>${escapeHtml(selected.nativeLink)}</code></strong></li>` : ''}
+                <li><span>Release Record</span><a class="text-link" href="${registryBase}${encodeURIComponent(selected.name)}/${encodeURIComponent(selected.version)}/release.json" target="_blank" rel="noopener">release.json ↗</a></li>
+              </ul>
+            </div>
+
+            <div class="pkg-sidebar-card">
+              <div class="sidebar-heading">Integrity SHA-256</div>
+              <div class="hash-box">
+                <code>${escapeHtml(selected.hash)}</code>
+                <button class="btn-copy" type="button" aria-label="Copy hash" style="padding:2px 6px;">
+                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+                  Copy
+                </button>
+              </div>
+            </div>
+
+            <div class="pkg-sidebar-card">
+              <div class="sidebar-heading">Versions (${sorted.length})</div>
+              <div class="version-history-list">
+                ${sorted.map(r => `
+                  <a href="#package-${encodeURIComponent(r.name)}/${encodeURIComponent(r.version)}" class="version-pill ${r.version === selected.version ? 'current' : ''}">
+                    <span>v${escapeHtml(r.version)}</span>
+                    ${r.version === latestVersion ? '<span class="pkg-badge" style="font-size:9px; padding:1px 4px; color:var(--color-green);">latest</span>' : ''}
+                  </a>
+                `).join('')}
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    `;
+
+    // Dropdown listener
+    const sel = $('#pkg-ver-select');
+    if (sel) {
+      sel.addEventListener('change', (e) => {
+        location.hash = `#package-${encodeURIComponent(selected.name)}/${encodeURIComponent(e.target.value)}`;
+      });
+    }
+
+    // Fetch README.md from registry
+    const readmeUrl = `${registryBase}${encodeURIComponent(selected.name)}/${encodeURIComponent(selected.version)}/files/README.md`;
+    const readmeEl = $('#pkg-readme-content');
+    try {
+      const readmeRes = await fetch(readmeUrl);
+      if (!readmeRes.ok) throw new Error('README not found');
+      const md = await readmeRes.text();
+      if (readmeEl) {
+        readmeEl.innerHTML = renderMarkdown(md);
+      }
+    } catch (err) {
+      if (readmeEl) {
+        readmeEl.innerHTML = `
+          <div style="padding:32px 24px; color:var(--text-muted); text-align:center;">
+            <p style="margin:0 0 10px;">README.md is not available for this release package.</p>
+            <a class="text-link" href="${escapeHtml(selected.repository)}" target="_blank" rel="noopener">Visit GitHub Repository ↗</a>
+          </div>
+        `;
+      }
+    }
+  } catch (e) {
+    content.innerHTML = `
+      <div style="max-width:var(--max-width); margin:0 auto; padding:40px 24px;">
+        <a class="text-link" href="#packages">← Back to Packages</a>
+        <h2 style="margin:24px 0 10px;">Could not load catalog</h2>
+        <p style="color:var(--text-muted);">Network error while loading package data. Please try again.</p>
+      </div>
+    `;
+  }
+}
+
+/**
  * Render Package Catalog (Scalable dense list with search, filter, sort, pagination)
  */
 async function loadCatalog() {
@@ -1375,8 +1702,20 @@ async function loadCatalog() {
     const pageSize = 15;
 
     function updateView() {
-      // 1. Filter
-      let filtered = allPackages.filter((p) => {
+      // 1. Group by package name to show latest version per package
+      const byName = new Map();
+      for (const p of allPackages) {
+        if (!byName.has(p.name)) byName.set(p.name, []);
+        byName.get(p.name).push(p);
+      }
+      const groupedPackages = [...byName.values()].map(releases => {
+        const latest = releases[releases.length - 1];
+        latest._releasesCount = releases.length;
+        return latest;
+      });
+
+      // Filter
+      let filtered = groupedPackages.filter((p) => {
         const matchesQuery = (p.name + ' ' + p.description + ' ' + (p.nativeLink || '')).toLowerCase().includes(currentQuery);
         if (!matchesQuery) return false;
         if (currentFilter === 'native') return Boolean(p.nativeLink);
@@ -1415,12 +1754,14 @@ async function loadCatalog() {
       // Render Rows
       listEl.innerHTML = pageItems.map((p) => {
         const hashDisplay = p.hash && p.hash.length > 16 ? `${p.hash.slice(0, 8)}…${p.hash.slice(-8)}` : (p.hash || '');
+        const versionsBadge = p._releasesCount > 1 ? `<span class="pkg-badge" style="color:var(--accent); border-color:rgba(63,176,207,0.3);">${p._releasesCount} versions</span>` : '';
         return `
           <article class="pkg-row" data-pkg="${escapeHtml(p.name)}">
             <div class="pkg-row-top">
               <div class="pkg-title-group">
-                <a class="pkg-name-link" href="${p.repository || '#packages'}" target="_blank" rel="noopener">${escapeHtml(p.name)}</a>
+                <a class="pkg-name-link" href="#package-${escapeHtml(p.name)}">${escapeHtml(p.name)}</a>
                 <span class="pkg-badge">v${escapeHtml(p.version)}</span>
+                ${versionsBadge}
                 <span class="pkg-badge status">${escapeHtml(p.status || 'stable')}</span>
                 ${p.nativeLink ? `<span class="pkg-badge native" title="Requires native C library --link ${escapeHtml(p.nativeLink)}">lib: ${escapeHtml(p.nativeLink)}</span>` : ''}
               </div>
@@ -1441,15 +1782,21 @@ async function loadCatalog() {
               </div>
               <div style="display:flex; align-items:center; gap:12px;">
                 <a class="text-link" href="${p.repository}" target="_blank" rel="noopener">Source ↗</a>
+                <a class="text-link" href="#package-${escapeHtml(p.name)}" style="font-weight:600;">Readme &amp; Docs →</a>
                 <button class="pkg-details-toggle" type="button">▾ Details</button>
               </div>
             </div>
             <div class="pkg-expanded-drawer">
               <p style="font-size:13px; color:var(--text-muted); margin:0 0 8px;">Manifest dependency &amp; native build command:</p>
               ${codeBlock(`tarn add ${p.name} --registry ${registryBase}${p.nativeLink ? `\ntarn build --link ${p.nativeLink}` : ''}`, 'bash')}
-              <div style="font-size:12px; color:var(--text-dim); margin-top:8px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:8px;">
-                <span>Full SHA-256: <code>${escapeHtml(p.hash)}</code></span>
-                <a class="text-link" href="${registryBase}${encodeURIComponent(p.name)}/${encodeURIComponent(p.version)}/release.json" target="_blank">release.json ↗</a>
+              <div style="margin-top:12px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">
+                <a class="btn btn-primary btn-sm" href="#package-${escapeHtml(p.name)}" style="display:inline-flex; align-items:center; gap:6px;">
+                  📄 View README &amp; Documentation →
+                </a>
+                <div style="font-size:12px; color:var(--text-dim); display:flex; gap:12px;">
+                  <span>Full SHA-256: <code>${escapeHtml(p.hash)}</code></span>
+                  <a class="text-link" href="${registryBase}${encodeURIComponent(p.name)}/${encodeURIComponent(p.version)}/release.json" target="_blank">release.json ↗</a>
+                </div>
               </div>
             </div>
           </article>
@@ -1550,6 +1897,23 @@ async function loadCatalog() {
  */
 function navigate() {
   const rawHash = location.hash.replace(/^#/, '');
+
+  // Handle Dedicated Package Detail Routes (#package-NAME or #package/NAME)
+  if (rawHash.startsWith('package/') || rawHash.startsWith('package-')) {
+    const rest = rawHash.replace(/^package[\/-]/, '');
+    const pkgName = rest.split('/')[0];
+    const pkgVer = rest.split('/')[1] || null;
+    renderPackagePage(pkgName, pkgVer);
+
+    // Update navigation link states (highlight 'Packages' tab)
+    $$('nav.main-nav a').forEach((a) => {
+      const href = a.getAttribute('href') || '';
+      a.classList.toggle('active', href === '#packages');
+    });
+    window.scrollTo(0, 0);
+    return;
+  }
+
   const route = rawHash.split('-')[0] || 'home';
   const renderFn = pages[route] || pages.home;
 
