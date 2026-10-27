@@ -1,11 +1,11 @@
 # Tarn Programming Language
 
-> Tarn is a statically typed systems programming language with compile-time ownership, inferred lifetimes, native Linux x86_64 machine code generation via Cranelift, and zero mandatory garbage collection. It is designed with first-class support for humans and AI coding agents.
+> Tarn is a statically typed systems programming language with compile-time ownership, inferred lifetimes, native Linux x86_64 and ARM64 machine code generation via Cranelift, and zero mandatory garbage collection. It is designed with first-class support for humans and AI coding agents.
 
 ## Core Language Rules for LLMs
 
 - **File extension:** `.tarn`
-- **Platform target:** Linux x86_64
+- **Platform target:** Linux x86_64 and ARM64 (aarch64)
 - **No semicolons:** Statements are separated by line breaks.
 - **Explicit return:** `return` is always required to produce a function value. Blocks, `if`, and `match` are statements, not expressions.
 - **Variable bindings:**
