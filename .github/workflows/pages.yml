@@ -3,6 +3,12 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  # Sent by tarn-lng/tarn's release workflow when a release is published.
+  repository_dispatch:
+    types: [tarn-release]
+  # Fallback so a missed dispatch still picks up a new release.
+  schedule:
+    - cron: '17 */6 * * *'
 permissions:
   contents: read
   pages: write
@@ -25,6 +31,10 @@ jobs:
           curl --fail --proto '=https' --tlsv1.2 --max-time 30 https://tarn-lng.github.io/registry/catalog.json -o catalog.json
           node --check assets/app.js
           node -e 'const fs=require("fs"),c=JSON.parse(fs.readFileSync("catalog.json"));if(c.generator!=="Tarn"||c.schema_version!==1||!Array.isArray(c.packages))process.exit(1)'
+      - name: Load the latest Tarn release
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node tools/release-info.mjs .
       - name: Stage public website files
         run: |
           mkdir -p build/site

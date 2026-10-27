@@ -3,8 +3,12 @@
  */
 
 const repoRoot = 'https://github.com/tarn-lng/tarn/blob/main/';
-const releaseTag = 'https://github.com/tarn-lng/tarn/releases/tag/v0.0.8';
-const releaseDownload = 'https://github.com/tarn-lng/tarn/releases/download/v0.0.8/';
+// tarnRelease comes from assets/release.js, regenerated on every deployment.
+const tarnVersion = tarnRelease.version;
+const releaseTag = `https://github.com/tarn-lng/tarn/releases/tag/v${tarnVersion}`;
+const releaseDownload = `https://github.com/tarn-lng/tarn/releases/download/v${tarnVersion}/`;
+const archLabels = { x86_64: 'x86_64', aarch64: 'ARM64 (aarch64)' };
+const platformLabel = tarnRelease.archives.map(arch => arch === 'aarch64' ? 'ARM64' : arch).join(' &amp; ');
 const registryBase = 'https://tarn-lng.github.io/registry/';
 
 // DOM Helpers
@@ -292,14 +296,14 @@ fn main() Result<void, io.Error> {
 const pages = {
   home: () => `
     <section class="hero-section">
-      <div class="version-badge" style="display:inline-block; margin-bottom:16px;">Linux x86_64 &amp; ARM64 · Release v0.0.8</div>
+      <div class="version-badge" style="display:inline-block; margin-bottom:16px;">Linux ${platformLabel} · Release v${tarnVersion}</div>
       <h1 class="hero-title">The <span class="accent-text">Tarn</span> Programming Language</h1>
       <p class="hero-lead">
         A statically typed systems language with compile-time ownership, inferred lifetimes, native machine code generation, and zero mandatory garbage collection. Built for human systems engineers and coding agents.
       </p>
 
       <div class="hero-actions">
-        <a class="btn btn-primary" href="#install">Install Tarn v0.0.8 →</a>
+        <a class="btn btn-primary" href="#install">Install Tarn v${tarnVersion} →</a>
         <a class="btn btn-secondary" href="#tour">Language Tour & Syntax</a>
         <a class="btn btn-ghost" href="#stdlib">Standard Library</a>
         <a class="btn btn-ghost" href="https://github.com/tarn-lng/tarn" target="_blank" rel="noopener">GitHub ↗</a>
@@ -308,14 +312,14 @@ const pages = {
       <div class="hero-install-box">
         <div class="terminal-card">
           <div class="terminal-header">
-            <span>QUICK INSTALL (LINUX x86_64 / ARM64)</span>
+            <span>QUICK INSTALL (LINUX ${platformLabel})</span>
             <button class="btn-copy" type="button" aria-label="Copy install command">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
               Copy
             </button>
           </div>
           <pre class="terminal-body"><code><span class="prompt">$</span>curl --fail --proto '=https' https://tarn-lng.github.io/website/install.sh -o install.sh
-<span class="prompt">$</span>sh install.sh --version 0.0.8</code></pre>
+<span class="prompt">$</span>sh install.sh --version ${tarnVersion}</code></pre>
           <div class="terminal-footer">
             <span>Installs <code>tarn</code> and <code>tarn-lsp</code> to <code>~/.local/bin</code> (no sudo)</span>
             <a class="text-link" href="#install">Details & verification →</a>
@@ -328,7 +332,7 @@ const pages = {
     <section class="showcase-section">
       <div class="section-heading">
         <h2>Language at a Glance</h2>
-        <p>Explore genuine Tarn syntax verified directly against the v0.0.8 compiler.</p>
+        <p>Explore genuine Tarn syntax verified directly against the v${tarnVersion} compiler.</p>
       </div>
 
       <div class="tabs-container">
@@ -401,7 +405,7 @@ const pages = {
           <span class="step-badge">STEP 1</span>
           <h3>Install Toolchain</h3>
           <p>Download the prebuilt compiler and language server using the verified installer:</p>
-          ${codeBlock('sh install.sh --version 0.0.8\nexport PATH="$HOME/.local/bin:$PATH"', 'bash')}
+          ${codeBlock(`sh install.sh --version ${tarnVersion}\nexport PATH="$HOME/.local/bin:$PATH"`, 'bash')}
         </div>
 
         <div class="step-card">
@@ -814,7 +818,7 @@ try fs.write_text("output.txt", &content)`)}
           <p>Blocking and asynchronous TCP/UDP networking: <code>TcpListener</code>, <code>TcpStream</code>, <code>UdpSocket</code>, address parsing.</p>
           ${codeBlock(`import "net"
 
-var listener = try net.listen_tcp(&"127.0.0.8:8080")
+var listener = try net.listen_tcp(&"127.0.0.1:8080")
 conn := try listener.accept()
 try conn.write_all(&[2]u8{104, 105})`)}
         </section>
@@ -1083,14 +1087,14 @@ repository = "https://github.com/myname/mylib"`)}
 
       <main class="doc-main">
         <h1>Install Tarn</h1>
-        <p class="doc-lead">The official release v0.0.8 provides prebuilt native Linux x86_64 and ARM64 (aarch64) binaries and a verified installer that picks the right one for your machine.</p>
+        <p class="doc-lead">The official release v${tarnVersion} provides prebuilt native Linux ${tarnRelease.archives.map(arch => archLabels[arch] || arch).join(' and ')} binaries and a verified installer that picks the right one for your machine.</p>
 
         <!-- Quick Install -->
         <section class="doc-section" id="inst-quick">
           <h2>Automated Script Install</h2>
           <p>The installer script downloads the archive, verifies SHA-256 checksums, and installs both <code>tarn</code> and <code>tarn-lsp</code> into <code>~/.local/bin</code> (no root required):</p>
           ${codeBlock(`curl --fail --proto '=https' https://tarn-lng.github.io/website/install.sh -o install.sh
-sh install.sh --version 0.0.8
+sh install.sh --version ${tarnVersion}
 
 # Add ~/.local/bin to your PATH if not already present:
 export PATH="$HOME/.local/bin:$PATH"
@@ -1105,23 +1109,18 @@ tarn version`, 'bash')}
 
         <!-- Prebuilt Binaries -->
         <section class="doc-section" id="inst-binaries">
-          <h2>Prebuilt Binaries (Release v0.0.8)</h2>
+          <h2>Prebuilt Binaries (Release v${tarnVersion})</h2>
           <p>You can also download release assets directly from GitHub:</p>
           <div class="table-container">
             <table class="data-table">
               <thead><tr><th>Asset</th><th>Description</th><th>Link</th></tr></thead>
               <tbody>
-                <tr>
-                  <td><code>tarn-0.0.8-linux-x86_64.tar.gz</code></td>
-                  <td>Compiler, LSP server, and licenses for x86_64</td>
-                  <td><a class="text-link" href="${releaseDownload}tarn-0.0.8-linux-x86_64.tar.gz">Download .tar.gz ↗</a></td>
+${tarnRelease.archives.map(arch => `                <tr>
+                  <td><code>tarn-${tarnVersion}-linux-${arch}.tar.gz</code></td>
+                  <td>Compiler, LSP server, and licenses for ${archLabels[arch] || arch}</td>
+                  <td><a class="text-link" href="${releaseDownload}tarn-${tarnVersion}-linux-${arch}.tar.gz">Download .tar.gz ↗</a></td>
                 </tr>
-                <tr>
-                  <td><code>tarn-0.0.8-linux-aarch64.tar.gz</code></td>
-                  <td>Compiler, LSP server, and licenses for ARM64 (aarch64)</td>
-                  <td><a class="text-link" href="${releaseDownload}tarn-0.0.8-linux-aarch64.tar.gz">Download .tar.gz ↗</a></td>
-                </tr>
-                <tr>
+`).join('')}                <tr>
                   <td><code>SHA256SUMS</code></td>
                   <td>SHA-256 checksums for every archive</td>
                   <td><a class="text-link" href="${releaseDownload}SHA256SUMS">Download SHA256SUMS ↗</a></td>
@@ -1142,14 +1141,14 @@ tarn version`, 'bash')}
           <p>Verify archive integrity manually before extraction:</p>
           ${codeBlock(`# x86_64 or aarch64, matching \`uname -m\`:
 ARCH=x86_64
-curl -sLO ${releaseDownload}tarn-0.0.8-linux-$ARCH.tar.gz
+curl -sLO ${releaseDownload}tarn-${tarnVersion}-linux-$ARCH.tar.gz
 curl -sLO ${releaseDownload}SHA256SUMS
 # SHA256SUMS lists every architecture; check only the archive you downloaded:
-grep " tarn-0.0.8-linux-$ARCH.tar.gz$" SHA256SUMS | sha256sum --check --strict
+grep " tarn-${tarnVersion}-linux-$ARCH.tar.gz$" SHA256SUMS | sha256sum --check --strict
 
 # Extract binaries:
 mkdir -p ~/.local/bin
-tar -xzf tarn-0.0.8-linux-$ARCH.tar.gz -C ~/.local/bin`, 'bash')}
+tar -xzf tarn-${tarnVersion}-linux-$ARCH.tar.gz -C ~/.local/bin`, 'bash')}
         </section>
 
         <!-- Build from source -->
@@ -1288,7 +1287,7 @@ cargo build --release -p tarn -p tarn-lsp
         <section class="doc-section" id="llm-prompt">
           <h2>Copyable System Prompt for Coding Agents</h2>
           <p>Paste this preamble into Cursor, Claude Code, ChatGPT, Windsurf, or GitHub Copilot when generating Tarn code:</p>
-          ${codeBlock(`You are an expert programming assistant working with the Tarn programming language (v0.0.8, Linux x86_64 and ARM64).
+          ${codeBlock(`You are an expert programming assistant working with the Tarn programming language (v${tarnVersion}, Linux x86_64 and ARM64).
 Always follow these strict Tarn rules:
 1. No semicolons: Statements end with line breaks.
 2. Explicit return: Functions require an explicit 'return'. Blocks, 'if', and 'match' are statements, not expressions.

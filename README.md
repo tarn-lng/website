@@ -9,8 +9,13 @@ The package catalog is produced by the independent registry's Tarn validator.
 Deployment fetches its generated catalog from the public registry; package
 installation continues to use https://tarn-lng.github.io/registry/.
 
-Linux x86_64 and ARM64 prereleases are built with GitHub Actions. install.sh is copied
-from the compiler repository tools/release/install.sh; keep both in sync.
+Linux x86_64 and ARM64 prereleases are built with GitHub Actions. Deployment
+runs tools/release-info.mjs, which picks the newest complete tarn-lng/tarn release
+(archives, SHA256SUMS and install.sh), regenerates assets/release.js with its
+version and architectures, and publishes that release's own install.sh. The
+checked-in install.sh and release.js are local-preview fallbacks. Deployment runs
+on a `tarn-release` repository dispatch from the compiler's release workflow and
+every six hours as a fallback; it fails rather than publishing without a release.
 Installation verifies release checksums. Source installation remains available. Do not invent download links, mature-platform claims or unimplemented
 commands. Canonical detailed documentation stays in the compiler repository.
 
