@@ -3,12 +3,40 @@
  */
 
 const repoRoot = 'https://github.com/tarn-lng/tarn/blob/main/';
-// tarnRelease comes from assets/release.js, regenerated on every deployment.
-const tarnVersion = tarnRelease.version;
-const releaseTag = `https://github.com/tarn-lng/tarn/releases/tag/v${tarnVersion}`;
-const releaseDownload = `https://github.com/tarn-lng/tarn/releases/download/v${tarnVersion}/`;
+// assets/release.js holds the last known release; loadLatestRelease() replaces
+// it with the newest published one when the GitHub API is reachable.
+let tarnVersion, releaseTag, releaseDownload, platformLabel;
 const archLabels = { x86_64: 'x86_64', aarch64: 'ARM64 (aarch64)' };
-const platformLabel = tarnRelease.archives.map(arch => arch === 'aarch64' ? 'ARM64' : arch).join(' &amp; ');
+function useRelease(release) {
+  tarnRelease = release;
+  tarnVersion = release.version;
+  releaseTag = `https://github.com/tarn-lng/tarn/releases/tag/v${tarnVersion}`;
+  releaseDownload = `https://github.com/tarn-lng/tarn/releases/download/v${tarnVersion}/`;
+  platformLabel = release.archives.map(arch => arch === 'aarch64' ? 'ARM64' : arch).join(' &amp; ');
+}
+useRelease(tarnRelease);
+
+// Tarn releases are prereleases, which /releases/latest skips; the list is newest first.
+async function loadLatestRelease() {
+  try {
+    const res = await fetch('https://api.github.com/repos/tarn-lng/tarn/releases?per_page=10', { headers: { accept: 'application/vnd.github+json' } });
+    if (!res.ok) return false;
+    for (const r of await res.json()) {
+      const match = /^v(\d+\.\d+\.\d+)$/.exec(r.tag_name);
+      if (r.draft || !match) continue;
+      const version = match[1];
+      const names = new Set(r.assets.map(a => a.name));
+      const archives = ['x86_64', 'aarch64'].filter(arch => names.has(`tarn-${version}-linux-${arch}.tar.gz`));
+      // Skip a release whose assets are still uploading.
+      if (archives.length === 0 || !names.has('SHA256SUMS')) continue;
+      if (version === tarnVersion && archives.join() === tarnRelease.archives.join()) return false;
+      useRelease({ version, archives });
+      return true;
+    }
+  } catch (_) { /* offline or rate-limited: keep the bundled release */ }
+  return false;
+}
+
 const registryBase = 'https://tarn-lng.github.io/registry/';
 
 // DOM Helpers
@@ -319,7 +347,7 @@ const pages = {
             </button>
           </div>
           <pre class="terminal-body"><code><span class="prompt">$</span>curl --fail --proto '=https' https://tarn-lng.github.io/website/install.sh -o install.sh
-<span class="prompt">$</span>sh install.sh --version ${tarnVersion}</code></pre>
+<span class="prompt">$</span>sh install.sh</code></pre>
           <div class="terminal-footer">
             <span>Installs <code>tarn</code> and <code>tarn-lsp</code> to <code>~/.local/bin</code> (no sudo)</span>
             <a class="text-link" href="#install">Details & verification →</a>
@@ -405,7 +433,7 @@ const pages = {
           <span class="step-badge">STEP 1</span>
           <h3>Install Toolchain</h3>
           <p>Download the prebuilt compiler and language server using the verified installer:</p>
-          ${codeBlock(`sh install.sh --version ${tarnVersion}\nexport PATH="$HOME/.local/bin:$PATH"`, 'bash')}
+          ${codeBlock(`sh install.sh\nexport PATH="$HOME/.local/bin:$PATH"`, 'bash')}
         </div>
 
         <div class="step-card">
@@ -1094,7 +1122,8 @@ repository = "https://github.com/myname/mylib"`)}
           <h2>Automated Script Install</h2>
           <p>The installer script downloads the archive, verifies SHA-256 checksums, and installs both <code>tarn</code> and <code>tarn-lsp</code> into <code>~/.local/bin</code> (no root required):</p>
           ${codeBlock(`curl --fail --proto '=https' https://tarn-lng.github.io/website/install.sh -o install.sh
-sh install.sh --version ${tarnVersion}
+sh install.sh                    # newest release
+sh install.sh --version ${tarnVersion}    # or pin a specific release
 
 # Add ~/.local/bin to your PATH if not already present:
 export PATH="$HOME/.local/bin:$PATH"
@@ -1997,4 +2026,7 @@ document.addEventListener('click', async (e) => {
 
 // Initialization
 window.addEventListener('hashchange', navigate);
-window.addEventListener('DOMContentLoaded', navigate);
+window.addEventListener('DOMContentLoaded', () => {
+  navigate();
+  loadLatestRelease().then(changed => { if (changed) navigate(); });
+});
