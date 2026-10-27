@@ -1,7 +1,7 @@
 # Tarn Programming Language — Complete LLM Reference Specification
 
 Version: 0.0.1
-Platform: Linux x86_64
+Platform: Linux x86_64 and ARM64 (aarch64)
 Compiler: Cranelift backend emitting native ELF executables
 Standard Library: 17 embedded modules in compiler binary
 

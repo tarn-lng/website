@@ -9,8 +9,11 @@ The package catalog is produced by the independent registry's Tarn validator.
 Deployment fetches its generated catalog from the public registry; package
 installation continues to use https://tarn-lng.github.io/registry/.
 
-Linux x86_64 prereleases are built with GitHub Actions. install.sh is copied
-from the compiler repository tools/release/install.sh; keep both in sync.
+Linux x86_64 and ARM64 prereleases are built with GitHub Actions. install.sh is copied
+from the compiler repository tools/release/install.sh; keep both in sync. It
+installs the newest release unless --version is given, so it does not change per
+release. The page reads the newest release from the GitHub API in the browser;
+assets/release.js is the fallback when that API is unreachable.
 Installation verifies release checksums. Source installation remains available. Do not invent download links, mature-platform claims or unimplemented
 commands. Canonical detailed documentation stays in the compiler repository.
 

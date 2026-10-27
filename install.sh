@@ -1,6 +1,7 @@
 #!/bin/sh
 set -eu
-VERSION=0.0.1
+# Empty means the newest published release, resolved below.
+VERSION=
 PREFIX="${HOME}/.local/bin"
 FORCE=0
 UNINSTALL=0
@@ -10,7 +11,7 @@ while [ "$#" -gt 0 ]; do
     --prefix) PREFIX=${2:?Missing prefix}; shift 2 ;;
     --force) FORCE=1; shift ;;
     --uninstall) UNINSTALL=1; shift ;;
-    --help) echo 'Usage: install.sh [--version X.Y.Z] [--prefix DIRECTORY] [--force] [--uninstall]'; exit 0 ;;
+    --help) echo 'Usage: install.sh [--version X.Y.Z (default: newest release)] [--prefix DIRECTORY] [--force] [--uninstall]'; exit 0 ;;
     *) echo "Unknown argument: $1" >&2; exit 1 ;;
   esac
 done
@@ -22,20 +23,38 @@ if [ "$UNINSTALL" = 1 ]; then
   rm -f "$PREFIX/tarn" "$PREFIX/tarn-lsp" "$MARKER"
   echo 'Tarn uninstalled'; exit 0
 fi
-case "$VERSION" in ''|*[!0-9.]*|.*|*..*|*.) echo 'Use a numeric X.Y.Z release version' >&2; exit 1 ;; esac
-[ "$(uname -s)" = Linux ] && [ "$(uname -m)" = x86_64 ] || { echo 'Only Linux x86_64 is supported' >&2; exit 1; }
+# Kept inline: the installer is a standalone release asset.
+[ "$(uname -s)" = Linux ] || { echo 'Only Linux is supported' >&2; exit 1; }
+case "$(uname -m)" in
+  x86_64) ARCH=x86_64 ;;
+  aarch64|arm64) ARCH=aarch64 ;;
+  *) echo 'Only Linux x86_64 and ARM64 (aarch64) are supported' >&2; exit 1 ;;
+esac
 for tool in curl sha256sum tar mktemp; do command -v "$tool" >/dev/null || { echo "Missing tool: $tool" >&2; exit 1; }; done
+if [ -z "$VERSION" ]; then
+  # Every Tarn release is a prerelease, which GitHub's "latest" endpoint skips;
+  # the release list is newest first. The archive is still checksum-verified below.
+  VERSION=$(curl --fail --silent --show-error --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 \
+    -H 'Accept: application/vnd.github+json' 'https://api.github.com/repos/tarn-lng/tarn/releases?per_page=1' |
+    sed -n 's/.*"tag_name": *"v\([0-9][0-9.]*\)".*/\1/p' | head -n 1)
+  [ -n "$VERSION" ] || { echo 'Cannot determine the newest Tarn release; pass --version X.Y.Z' >&2; exit 1; }
+  echo "Installing Tarn $VERSION (newest release)"
+fi
+case "$VERSION" in ''|*[!0-9.]*|.*|*..*|*.) echo 'Use a numeric X.Y.Z release version' >&2; exit 1 ;; esac
 mkdir -p "$PREFIX"
 if [ "$FORCE" != 1 ] && { [ -e "$PREFIX/tarn" ] || [ -L "$PREFIX/tarn" ] || [ -e "$PREFIX/tarn-lsp" ] || [ -L "$PREFIX/tarn-lsp" ]; }; then
   test -f "$MARKER" && (cd "$PREFIX"; sha256sum --check --status .tarn-release) || { echo 'Existing binaries are not an unchanged managed installation; use --force to replace' >&2; exit 1; }
 fi
 TEMP=$(mktemp -d "$PREFIX/.tarn-install.XXXXXX")
 trap 'rm -rf "$TEMP"' EXIT HUP INT TERM
-ASSET="tarn-$VERSION-linux-x86_64.tar.gz"
+ASSET="tarn-$VERSION-linux-$ARCH.tar.gz"
 BASE="https://github.com/tarn-lng/tarn/releases/download/v$VERSION"
 curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 "$BASE/$ASSET" -o "$TEMP/$ASSET"
 curl --fail --location --proto '=https' --proto-redir '=https' --tlsv1.2 --retry 3 "$BASE/SHA256SUMS" -o "$TEMP/SHA256SUMS"
-(cd "$TEMP"; sha256sum --check --strict SHA256SUMS)
+# The shared checksum file lists every architecture; download and check only
+# the selected archive. Reject duplicate/missing entries before extraction.
+awk -v asset="$ASSET" '$2 == asset {print; count++} END {if (count != 1) exit 1}' "$TEMP/SHA256SUMS" > "$TEMP/selected-sums"
+(cd "$TEMP"; sha256sum --check --strict selected-sums)
 # The trusted release contains exactly these regular files, with no directories or links.
 CONTENTS=$(tar -tzf "$TEMP/$ASSET" | LC_ALL=C sort)
 EXPECTED=$(printf 'COPYING\nREADME.md\ntarn\ntarn-lsp')
