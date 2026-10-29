@@ -13,6 +13,12 @@ function useRelease(release) {
   releaseTag = `https://github.com/tarn-lng/tarn/releases/tag/v${tarnVersion}`;
   releaseDownload = `https://github.com/tarn-lng/tarn/releases/download/v${tarnVersion}/`;
   platformLabel = release.archives.map(arch => arch === 'aarch64' ? 'ARM64' : arch).join(' &amp; ');
+  // Static page chrome (header badge, footer link) follows the same release.
+  document.querySelectorAll('[data-release-version]').forEach(el => {
+    const pattern = el.dataset.releaseVersion || 'v{version}';
+    el.textContent = pattern.replace('{version}', tarnVersion);
+    if (el.title) el.title = `View Release v${tarnVersion}`;
+  });
 }
 useRelease(tarnRelease);
 
